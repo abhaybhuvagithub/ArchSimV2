@@ -163,6 +163,42 @@ export const AWS_RULES = [
   r('aws_ecr_repository', 'containerreg'),
   r('aws_transfer_server', 'mft'),
   r('aws_cloudhsm_v2_cluster', 'hsm'),
+
+  // ── found by running the compiler over 14,000 real resources ───────────────
+  // Every rule below exists because a real repository had one and the canvas
+  // rendered it as an anonymous grey box.
+  r('aws_appmesh_mesh', 'mesh'),
+  r('aws_appmesh_virtual_node', 'mesh'),
+  r('aws_appmesh_virtual_service', 'mesh'),
+  r('aws_prometheus_workspace', 'monitor'),
+  r('aws_grafana_workspace', 'bi'),
+  r('aws_backup_vault', 'backup'),
+  r('aws_backup_plan', 'backup'),
+  r('aws_dms_endpoint', 'cdc'),
+  r('aws_dms_replication_instance', 'cdc'),
+  r('aws_datasync_agent', 'mft'),
+  r('aws_datazone_domain', 'analytics'),
+  r('aws_quicksight_data_source', 'bi'),
+  r('aws_quicksight_data_set', 'bi'),
+  r('aws_guardduty_detector', 'siem'),
+  r('aws_securityhub_account', 'siem'),
+  r('aws_config_configuration_recorder', 'audit'),
+  r('aws_cloudtrail', 'audit'),
+  r('aws_appconfig_application', 'config'),
+  r('aws_acmpca_certificate_authority', 'tls'),
+  r('aws_medialive_channel', 'transcode'),
+  r('aws_mediaconvert_queue', 'transcode'),
+  r('aws_elastictranscoder_pipeline', 'transcode'),
+  r('aws_kinesisanalyticsv2_application', 'stream'),
+  r('aws_kinesis_firehose_delivery_stream', 'stream'),
+  r('aws_glue_catalog_database', 'lake'),
+  r('aws_lakeformation_resource', 'lake'),
+  r('aws_pinpoint_app', 'push'),
+  r('aws_sesv2_email_identity', 'push'),
+  r('aws_amplify_app', 'edge'),
+  r('aws_appsync_graphql_api', 'graphql'),
+  r('aws_verifiedaccess_instance', 'iam'),
+  r('aws_networkmanager_global_network', 'gslb'),
 ]
 
 /**
@@ -177,6 +213,15 @@ export const AWS_STRUCTURAL = [
   'aws_iam_instance_profile', 'aws_acm_certificate', 'aws_key_pair',
   'aws_availability_zones', 'aws_caller_identity', 'aws_region', 'aws_ecs_cluster',
   'aws_db_subnet_group', 'aws_elasticache_subnet_group', 'aws_cloudwatch_event_rule',
+  // Cloud WAN / Network Manager is network topology, in the same category as a
+  // VPC: real, and not a queueing station.
+  'aws_networkmanager_core_network', 'aws_networkmanager_core_network_policy_attachment',
+  'aws_networkmanager_site', 'aws_networkmanager_device', 'aws_networkmanager_link',
+  'aws_networkmanager_connection', 'aws_networkmanager_attachment_accepter',
+  'aws_networkmanager_transit_gateway_route_table_attachment',
+  'aws_networkmanager_vpc_attachment', 'aws_networkmanager_site_to_site_vpn_attachment',
+  'aws_ec2_transit_gateway', 'aws_ec2_transit_gateway_vpc_attachment', 'aws_vpc_peering_connection',
+  'aws_dx_gateway', 'aws_dx_connection', 'aws_vpn_gateway', 'aws_customer_gateway',
 ]
 
 /**
@@ -191,6 +236,41 @@ export const AWS_STRUCTURAL = [
  * makes `aws_lb → aws_lb_listener → aws_lb_target_group → attachment →
  * aws_instance` collapse into the one architectural edge a human would draw.
  */
+/**
+ * Noise: real resources that are not architecture.
+ *
+ * A `null_resource` is a provisioner hook. `random_pet` names things.
+ * `aws_s3_object` uploads a file. `aws_s3_bucket_versioning` is a setting on a
+ * bucket that is already a node. None of them queue, serve or fail in a way the
+ * simulator can model, and drawing them is worse than useless — a real repo
+ * contributes hundreds, and a canvas showing 555 `null_resource` boxes is a
+ * canvas nobody looks at twice.
+ *
+ * They are classified, not dropped: they still round-trip through passthrough
+ * byte for byte. The distinction is between "we do not model this" and "we lost
+ * this", and only the second one is a bug.
+ */
+export const AWS_NOISE = [
+  // provisioning glue (provider-agnostic — see NOISE_PREFIXES too)
+  'null_resource', 'terraform_data', 'aws_ssm_parameter', 'aws_ssm_document',
+  'aws_s3_object', 'aws_s3_bucket_object',
+  // settings on a resource that is already a node
+  'aws_s3_bucket_versioning', 'aws_s3_bucket_acl', 'aws_s3_bucket_policy',
+  'aws_s3_bucket_ownership_controls', 'aws_s3_bucket_public_access_block',
+  'aws_s3_bucket_server_side_encryption_configuration', 'aws_s3_bucket_lifecycle_configuration',
+  'aws_s3_bucket_cors_configuration', 'aws_s3_bucket_logging', 'aws_s3_bucket_notification',
+  'aws_s3_bucket_replication_configuration', 'aws_s3_bucket_website_configuration',
+  'aws_db_parameter_group', 'aws_db_option_group', 'aws_rds_cluster_parameter_group',
+  'aws_elasticache_parameter_group', 'aws_dynamodb_table_item',
+  'aws_lambda_permission', 'aws_lambda_alias', 'aws_lambda_layer_version',
+  'aws_cloudwatch_log_stream', 'aws_cloudwatch_log_resource_policy',
+  'aws_sqs_queue_policy', 'aws_sns_topic_policy', 'aws_sns_topic_subscription',
+  'aws_iam_user', 'aws_iam_user_policy_attachment', 'aws_iam_group', 'aws_iam_openid_connect_provider',
+]
+
+/** Provider prefixes that never contribute a component, whatever the type. */
+export const NOISE_PREFIXES = ['random_', 'tls_', 'local_', 'time_', 'external_', 'archive_', 'template_', 'http_']
+
 export const AWS_CONNECTORS = [
   'aws_lb_listener', 'aws_lb_listener_rule', 'aws_lb_target_group', 'aws_lb_target_group_attachment',
   'aws_autoscaling_attachment', 'aws_ecs_task_definition', 'aws_launch_template',

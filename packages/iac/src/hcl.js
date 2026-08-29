@@ -94,12 +94,31 @@ class Parser {
     return m[0]
   }
 
+  /**
+   * Consume a quoted string, including its interpolations.
+   *
+   * `"${formatlist("arn:aws:ssm:%s", var.x)}"` is one string, and a scanner that
+   * stops at the next quote stops in the middle of it — after which every brace
+   * in the file is counted wrong and the enclosing block never closes. HCL
+   * strings nest arbitrarily (`"${jsonencode({k = "v"})}"`), so interpolations
+   * are tracked by depth and inner strings are consumed recursively.
+   */
   readStringLiteral() {
     const start = this.i
     this.i++ // opening quote
+    let interp = 0
     while (this.i < this.s.length) {
       const c = this.s[this.i]
       if (c === '\\') { this.i += 2; continue }
+      // ${…} interpolation and %{…} template directive
+      if ((c === '$' || c === '%') && this.s[this.i + 1] === '{') { interp++; this.i += 2; continue }
+      if (interp > 0) {
+        if (c === '"') { this.readStringLiteral(); continue }
+        if (c === '{') interp++
+        else if (c === '}') interp--
+        this.i++
+        continue
+      }
       if (c === '"') { this.i++; break }
       this.i++
     }

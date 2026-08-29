@@ -58,6 +58,8 @@ export const GCP_RULES = [
   r('google_compute_backend_bucket', 'cdn'),
 ]
 
+export const GCP_NOISE = ['google_project_service', 'google_storage_bucket_object', 'google_secret_manager_secret_version']
+
 export const GCP_CONNECTORS = [
   'google_compute_backend_service', 'google_compute_url_map', 'google_compute_target_https_proxy',
   'google_compute_health_check', 'google_compute_instance_group', 'google_cloud_run_service_iam_member',

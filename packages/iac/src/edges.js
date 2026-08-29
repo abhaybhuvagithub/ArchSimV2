@@ -38,13 +38,41 @@ const rankOf = (kind) => TIER_RANK[kind] ?? 7
  * @param deps  Map<address, Set<address>> — full dependency graph, for hopping
  *              through structural resources (lb → target group → instance)
  */
-export function inferEdges(hints, nodesByAddress, connectors, deps, mkEdge) {
+export function inferEdges(hints, nodesByAddress, connectors, deps, mkEdge, opts = {}) {
   const adj = bidirectional(deps)
+  // A connector carries traffic between *two* things. Something referenced by
+  // twenty resources is not carrying traffic between them — it is a hub, and
+  // hopping through it connects everything to everything. Real Terraform is full
+  // of these: a `module "vpc"` block whose outputs every resource consumes turned
+  // a six-component example into a near-complete graph, which is exactly as
+  // useless as an empty one.
+  //
+  // The test is not raw degree but how many *components* it touches directly.
+  // A target group is referenced by a listener and six attachments — seven
+  // neighbours, zero of them components, and genuinely a traffic path. A shared
+  // `module "vpc"` touches four components directly and is carrying nothing
+  // between them.
+  const maxComponents = opts.maxConnectorComponents ?? 2
+  const maxDegree = opts.maxConnectorDegree ?? 12
+  const hub = new Set()
+  for (const [addr, peers] of adj) {
+    if (nodesByAddress.has(addr)) continue
+    let components = 0
+    for (const p of peers) if (nodesByAddress.has(p)) components++
+    if (components > maxComponents || peers.size > maxDegree) hub.add(addr)
+  }
   const out = new Map()
-  const add = (fromAddr, toAddr, confidence, reason, protocol) => {
+  const add = (fromAddr, toAddr, confidence, reason, protocol, inferred = false) => {
     const a = nodesByAddress.get(fromAddr)
     const b = nodesByAddress.get(toAddr)
     if (!a || !b || a.id === b.id) return
+    // Two unmapped components referencing each other tells us nothing about
+    // traffic. We do not know what either of them *is*, so we certainly do not
+    // know that one calls the other — and a family of unmapped resources that
+    // all reference each other (AWS Cloud WAN, a vendor's Snowflake module)
+    // otherwise renders as a complete graph, which is an invention.
+    // An explicit hint from a mapping rule still counts; a graph walk does not.
+    if (inferred && a.kind === 'custom' && b.kind === 'custom') return
     const [src, dst, flipped] = orient(a, b)
     const key = `${src.id}->${dst.id}`
     const prev = out.get(key)
@@ -70,13 +98,14 @@ export function inferEdges(hints, nodesByAddress, connectors, deps, mkEdge) {
   // every resource in the repo to every other one.
   for (const [addr, node] of nodesByAddress) {
     if (!node) continue
-    for (const reached of reachThroughConnectors(addr, adj, nodesByAddress, connectors)) {
+    for (const reached of reachThroughConnectors(addr, adj, nodesByAddress, connectors, hub)) {
       // Every intermediate hop is a connector by construction — a listener or an
       // attachment is an explicit statement about traffic, not a coincidence —
       // so a short chain is as trustworthy as a direct reference. Longer chains
       // drop to medium and render dashed until a human confirms them.
       add(addr, reached.address, reached.hops <= 2 ? 'high' : reached.hops <= 4 ? 'medium' : 'low',
-        reached.hops === 1 ? 'direct reference in the plan graph' : `reference through ${reached.via.join(' → ')}`)
+        reached.hops === 1 ? 'direct reference in the plan graph' : `reference through ${reached.via.join(' → ')}`,
+        undefined, true)
     }
   }
 
@@ -91,7 +120,7 @@ function bidirectional(deps) {
   return adj
 }
 
-function reachThroughConnectors(start, deps, nodesByAddress, structural, maxHops = 4) {
+function reachThroughConnectors(start, deps, nodesByAddress, structural, hub = new Set(), maxHops = 4) {
   const found = []
   const seen = new Set([start])
   let frontier = [{ addr: start, hops: 0, via: [] }]
@@ -103,7 +132,7 @@ function reachThroughConnectors(start, deps, nodesByAddress, structural, maxHops
         seen.add(d)
         const hops = cur.hops + 1
         if (nodesByAddress.has(d)) { found.push({ address: d, hops, via: cur.via }); continue }
-        if (structural.has(d) && hops < maxHops) next.push({ addr: d, hops, via: [...cur.via, shortType(d)] })
+        if (structural.has(d) && !hub.has(d) && hops < maxHops) next.push({ addr: d, hops, via: [...cur.via, shortType(d)] })
       }
     }
     frontier = next

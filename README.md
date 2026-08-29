@@ -7,7 +7,7 @@ HashiCorp owns provisioning. Datadog owns observation. The seam between them —
 ArchSim v2 is the shape of that seam.
 
 [![CI](https://github.com/abhaybhuvagithub/ArchSimV2/actions/workflows/ci.yml/badge.svg)](https://github.com/abhaybhuvagithub/ArchSimV2/actions/workflows/ci.yml)
-· 376 checks · zero runtime dependencies · Node 20+
+· 410 checks · 6,762 real Terraform files scanned clean · zero runtime dependencies · Node 20+
 
 ---
 
@@ -132,7 +132,24 @@ byte-range patch of one expression — never a regeneration of a file.
 
 Seventeen deliberately hostile fixtures — CRLF, tabs, unicode comments, heredocs
 containing braces, `dynamic` blocks, `for_each`, no trailing newline — are held
-to that on every push.
+to that on every push, plus seven more that real repositories taught us.
+
+Because fixtures you write yourself only test what you already thought of, the
+compiler is also run over whole repositories:
+
+```bash
+ARCHSIM_SCAN_ROOT=~/src node test/scan.mjs
+```
+
+Against 6,762 files of real Terraform — the terraform-aws-modules suite,
+cloudposse components, Azure quickstarts and the AWS provider's own corpus:
+**61,623 blocks, 14,018 resources, 0 parse errors, 0 lost bytes, 0 crashes**, and
+every one of 3,832 module directories produces a graph that validates and
+simulates. The first run of that scan found four bugs in an afternoon that the
+hand-written suite could not reach: `module` blocks crashing the ingest, string
+interpolations containing quotes unbalancing a file, provisioning glue drawn as
+architecture, and a single shared module connecting everything to everything.
+All four are fixtures now.
 
 ### `observed` mode: adoption without ownership
 
@@ -189,7 +206,7 @@ db slowed 15× at unchanged arrival rate
 ### Every claim is a check
 
 ```bash
-npm run verify     # 376/376 checks passed.
+npm run verify     # 410/410 checks passed.
 ```
 
 That is the strategy, inherited from ArchSim 1.x and pointed at bigger claims:
@@ -237,6 +254,7 @@ passes after it.
 | 3 | `archsim` CLI, the gate, Monte-Carlo, md/json/SARIF, GitHub Action, priced repairs | ✅ |
 | 4 | Discrete-event engine, chaos scenarios, closed-form and metamorphic validation | ✅ |
 | 5 | Twin Lite: PromQL/Datadog/OTLP pull, ghost nodes, calibration, time-travel replay | ✅ |
+| — | Hardening against real repositories (`test/scan.mjs`), 158 mapping rules | ✅ |
 | 6 | Twin Server: gateway → Kafka → ClickHouse, long retention, fleet-scale rollups | planned |
 
 Design document: [`docs/DESIGN.md`](docs/DESIGN.md). Deeper notes on

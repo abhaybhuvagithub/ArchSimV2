@@ -27,7 +27,8 @@ import {
 import {
   parseHCL, walkBlocks, addressOf, bodyOf, applyEdits, parseYamlDocs, getPath, k8sAddress,
   planJsonToIR, k8sToIR, k8sObjects, hclToIR, emitChanges, patchIsSurgical, generateNode,
-  coverage, findRule, isStructural, isConnector, inferFromImage, parseInstanceClass,
+  coverage, findRule, isStructural, isConnector, isNoise, isSubResource, labelFromAddress,
+  inferFromImage, parseInstanceClass,
   sizeFromInstanceClass, TIER_RANK, orient, callSemanticsFor,
 } from '@archsim/iac'
 import {
@@ -44,7 +45,7 @@ import { parseConfig, EXAMPLE_CONFIG } from '../packages/cli/src/config.js'
 import { runGate } from '../packages/cli/src/gate.js'
 import { markdownReport, jsonReport, sarifReport, terminalReport } from '../packages/cli/src/report.js'
 
-import { HCL_CORPUS, K8S_CORPUS } from './corpus.mjs'
+import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8')
@@ -760,6 +761,100 @@ check('a deleted node becomes a removal proposal, never a deletion', () => {
   const out = emitChanges(ir, next, sources)
   ok(out.removals.length >= 1)
   ok(/proposed, not applied/.test(out.removals[0].note))
+})
+
+section('IaC — what real Terraform taught us')
+// Each of these is a bug found by running the compiler over ~6,800 files of
+// real Terraform. None of them was reachable from a corpus I wrote myself.
+for (const fixture of REAL_WORLD_CORPUS) {
+  const sources = [{ path: `${fixture.name}.tf`, text: fixture.text }]
+  check(`[real:${fixture.name}] parses`, () => eq(parseHCL(fixture.text, 'x.tf').errors.length, 0))
+  check(`[real:${fixture.name}] ingests without throwing`, () => ok(hclToIR(sources, { managed: 'partial' }).ir.nodes.length >= 0))
+  check(`[real:${fixture.name}] emit with no changes touches nothing`, () => {
+    const { ir } = hclToIR(sources, { managed: 'partial' })
+    eq(emitChanges(ir, ir, sources).patches.length, 0)
+  })
+}
+
+check('a module block does not crash the ingest — a quarter of real files have one', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'module-block')
+  const { ir } = hclToIR([{ path: 'x.tf', text: f.text }])
+  ok(ir.nodes.some((n) => n.kind === 'app'))
+})
+check('a module is a connector, not a component', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'module-block')
+  const { ir } = hclToIR([{ path: 'x.tf', text: f.text }])
+  ok(!ir.nodes.some((n) => n.bindings.some((b) => b.address.startsWith('module.'))))
+})
+check('a string interpolation containing quotes does not unbalance the file', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'interpolation-with-nested-quotes')
+  const p = parseHCL(f.text, 'x.tf')
+  eq(p.errors.length, 0)
+  eq([...walkBlocks(p)].filter((b) => b.block.name === 'resource').length, 2)
+})
+check('an interpolated object literal keeps its braces to itself', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'interpolation-with-object')
+  const p = parseHCL(f.text, 'x.tf')
+  eq(p.errors.length, 0)
+  eq([...walkBlocks(p)].filter((b) => b.block.name === 'resource').length, 2)
+})
+check('provisioning glue never becomes a component', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'provisioning-noise')
+  const { ir } = hclToIR([{ path: 'x.tf', text: f.text }])
+  const labels = ir.nodes.map((n) => n.bindings[0]?.address || '')
+  ok(!labels.some((a) => /^(random_|null_resource|tls_)/.test(a)), `drew glue: ${labels.join(', ')}`)
+  ok(ir.nodes.some((n) => n.kind === 'blob'), 'the bucket itself is still a component')
+})
+check('a setting on a resource is not a second copy of that resource', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'provisioning-noise')
+  const { ir } = hclToIR([{ path: 'x.tf', text: f.text }])
+  eq(ir.nodes.filter((n) => n.kind === 'blob').length, 1)
+})
+check('glue is classified, not lost — it still round-trips', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'provisioning-noise')
+  const sources = [{ path: 'x.tf', text: f.text }]
+  const { ir } = hclToIR(sources, { managed: 'partial' })
+  ok(ir.passthrough.some((p) => p.text.includes('null_resource')), 'the bytes must survive even when the box does not')
+})
+check('sub-resources are detected structurally, not by enumeration', () => {
+  ok(isSubResource('aws_cognito_user_pool_client'))
+  ok(isSubResource('aws_s3_bucket_versioning'))
+  ok(!isSubResource('aws_lb'))
+  ok(!isSubResource('aws_rds_cluster_instance'), 'an explicit rule must win over the prefix heuristic')
+})
+check('a generic Terraform name falls back to the resource type', () => {
+  eq(labelFromAddress('aws_cognito_user_pool', 'this'), 'cognito user pool')
+  eq(labelFromAddress('aws_instance', 'other'), 'other')
+})
+check('no two components share a meaningless label', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'generic-names')
+  const { ir } = hclToIR([{ path: 'x.tf', text: f.text }])
+  const labels = ir.nodes.filter((n) => !n.attrs.synthetic).map((n) => n.label)
+  eq(new Set(labels).size, labels.length, `duplicate labels: ${labels.join(', ')}`)
+  ok(!labels.includes('this'))
+})
+check('a hub is not a connector: one shared module must not connect everything', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'hub-module')
+  const { ir } = hclToIR([{ path: 'x.tf', text: f.text }])
+  const real = ir.nodes.filter((n) => !n.attrs.synthetic && !n.capacity.source)
+  // Six components sharing one module produced 30 edges before the degree cap.
+  ok(ir.edges.length <= real.length, `${ir.edges.length} edges for ${real.length} components is a hairball`)
+})
+check('the patch attribute is read off the block, not assumed to be `count`', () => {
+  const f = REAL_WORLD_CORPUS.find((c) => c.name === 'implicit-count-attribute')
+  const sources = [{ path: 'x.tf', text: f.text }]
+  const { ir } = hclToIR(sources, { managed: 'partial' })
+  const node = ir.nodes.find((n) => n.bindings.length)
+  const next = normalizeIR({ ...ir, nodes: ir.nodes.map((n) => (n.id === node.id ? { ...n, capacity: { ...n.capacity, replicas: 9 } } : n)) })
+  const out = emitChanges(ir, next, sources)
+  eq(out.patches.length, 1)
+  ok(out.patches[0].edits[0].why.includes('desired_capacity'))
+  const v = patchIsSurgical(out.patches[0].before, out.patches[0].after, out.patches[0].edits)
+  ok(v.ok && v.changedLines.length === 1)
+})
+check('the mapping tables classify glue as noise, not as unmapped components', () => {
+  ok(isNoise('null_resource') && isNoise('random_pet') && isNoise('aws_s3_object'))
+  ok(!isNoise('aws_lb') && !isNoise('aws_db_instance'))
 })
 
 section('IaC — YAML round-trip')

@@ -18,7 +18,7 @@
 
 import { createIR, irNode, irEdge, normalizeIR, ulidFrom } from '@archsim/ir'
 import { capacityFor } from '@archsim/core'
-import { findRule, isStructural, isConnector, providerOf } from './mappings/index.js'
+import { findRule, isStructural, isConnector, isNoise, providerOf } from './mappings/index.js'
 import { inferEdges, annotationEdges, protocolFor, callSemanticsFor } from './edges.js'
 import { parseHCL, walkBlocks, addressOf, bodyOf, attrValue } from './hcl.js'
 import { parseYamlDocs, k8sAddress } from './yaml.js'
@@ -53,10 +53,10 @@ export function planJsonToIR(plan, opts = {}) {
     const attrs = res.values || {}
     const rule = findRule(provider, type, attrs)
 
-    if (!rule && isStructural(type)) {
+    if (!rule && (isStructural(type) || isNoise(type))) {
       if (isConnector(type)) connectors.add(res.address)
       report.structural++
-      report.resources.push({ address: res.address, type, disposition: isConnector(type) ? 'connector' : 'structural' })
+      report.resources.push({ address: res.address, type, disposition: isConnector(type) ? 'connector' : isNoise(type) ? 'noise' : 'structural' })
       continue
     }
     if (rule?.edgeOnly) {
@@ -198,7 +198,8 @@ function edgeCtx(res, resources) {
 
 function labelFor(res) {
   const v = res.values || {}
-  return v.name || v.identifier || v.bucket || v.function_name || v.cluster_identifier || v.domain_name || res.name || res.address
+  return v.name || v.identifier || v.bucket || v.function_name || v.cluster_identifier
+    || v.domain_name || labelFromAddress(res.type, res.name)
 }
 
 // ── Mode A: Kubernetes live/rendered JSON ───────────────────────────────────
@@ -363,7 +364,21 @@ export function hclToIR(files, opts = {}) {
     capturePassthrough(ir, parsed, path)
     for (const { block } of walkBlocks(parsed)) {
       if (block.name !== 'resource' && block.name !== 'module') continue
-      if (block.name === 'module') { structural.add(addressOf(block)); continue }
+      // A module call is not a component, but it *is* traffic-carrying: real
+      // Terraform wires services together by passing one module's output into
+      // another's input, so edge inference has to be able to hop through it.
+      // What is *inside* the module is a separate ingest — and in Mode A the
+      // plan has already flattened it, which is the better answer.
+      if (block.name === 'module') {
+        const addr = addressOf(block)
+        connectors.add(addr)
+        const modRefs = new Set()
+        collectHclRefs(block, modRefs)
+        deps.set(addr, modRefs)
+        report.structural++
+        report.resources.push({ address: addr, type: 'module', disposition: 'connector' })
+        continue
+      }
       const type = block.labels[0]
       const address = addressOf(block)
       const { attrs } = bodyOf(block)
@@ -376,9 +391,10 @@ export function hclToIR(files, opts = {}) {
       collectHclRefs(block, refs)
       deps.set(address, refs)
 
-      if (!rule && isStructural(type)) {
+      if (!rule && (isStructural(type) || isNoise(type))) {
         if (isConnector(type)) connectors.add(address)
         report.structural++
+        report.resources.push({ address, type, disposition: isConnector(type) ? 'connector' : isNoise(type) ? 'noise' : 'structural' })
         continue
       }
       if (rule?.edgeOnly) { connectors.add(address); continue }
@@ -415,7 +431,7 @@ export function hclToIR(files, opts = {}) {
       const node = irNode({
         id: ulidFrom(`tf:${address}`),
         kind,
-        label: values.name || block.labels[1],
+        label: values.name || labelFromAddress(type, block.labels[1]),
         capacity: cap,
         bindings: [{
           lang: 'hcl', file: path, address, managed,
@@ -459,6 +475,21 @@ function capturePassthrough(ir, parsed, file) {
       ...(anchor ? { anchorAfter: anchor } : {}),
     })
   }
+}
+
+/**
+ * Terraform convention names the primary resource in a module `this`, so a
+ * faithful label puts six boxes called "this" on the canvas. When the name
+ * carries no information, the type does: `aws_cognito_user_pool.this` reads
+ * better as "cognito user pool".
+ */
+const GENERIC_NAMES = new Set(['this', 'main', 'default', 'primary', 'that', 'example', 'test'])
+export function labelFromAddress(type, name) {
+  if (name && !GENERIC_NAMES.has(name)) return name
+  const pretty = String(type)
+    .replace(/^(aws|google|azurerm|azapi)_/, '')
+    .replace(/_/g, ' ')
+  return pretty || name || type
 }
 
 function literalValues(block) {

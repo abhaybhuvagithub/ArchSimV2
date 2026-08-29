@@ -18,7 +18,7 @@
 
 import { parseHCL, walkBlocks, addressOf, bodyOf, applyEdits } from './hcl.js'
 import { parseYamlDocs, k8sAddress, yamlEdit } from './yaml.js'
-import { findRule, providerOf, allRules } from './mappings/index.js'
+import { findRule, providerOf, allRules, isNoise } from './mappings/index.js'
 
 /**
  * Compute the edits that carry `targetIR` back into the source files.
@@ -105,7 +105,11 @@ function hclEdits(text, binding, before, node) {
   }
   const { attrs } = bodyOf(target)
   const rule = findRule(providerOf(target.labels[0]), target.labels[0], {})
-  const patchMap = rule?.patch || { replicas: { attr: 'count' } }
+  // Where no rule declares which attribute carries the replica count, read it
+  // off the block instead of assuming `count`. Assuming produced a confident
+  // refusal ("has no `count` attribute") about resources that plainly declared
+  // `desired_capacity` two lines below — right to refuse, wrong about why.
+  const patchMap = rule?.patch || { replicas: { attr: countAttrName(attrs) } }
 
   for (const field of changedFields(before, node)) {
     if (field !== 'replicas') continue // only replica counts are round-tripped today; everything else is a removal-safe no-op
@@ -142,6 +146,14 @@ function yamlEdits(text, binding, before, node) {
     edits.push({ ...e, why: `${binding.address}.spec.replicas → ${node.capacity.replicas}` })
   }
   return { edits, unpatchable }
+}
+
+const COUNT_ATTRS = ['count', 'desired_count', 'desired_capacity', 'num_cache_nodes',
+  'num_cache_clusters', 'number_of_broker_nodes', 'instance_count', 'node_count',
+  'target_size', 'instances', 'min_size', 'shard_count', 'number_of_nodes']
+
+function countAttrName(attrs) {
+  return COUNT_ATTRS.find((a) => attrs[a]) || 'count'
 }
 
 export function changedFields(before, after) {

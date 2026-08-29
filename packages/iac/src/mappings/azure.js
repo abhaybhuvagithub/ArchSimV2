@@ -43,7 +43,15 @@ export const AZURE_RULES = [
   r('azurerm_key_vault', 'secrets'),
   r('azurerm_machine_learning_workspace', 'ml'),
   r('azurerm_container_registry', 'containerreg'),
+  r('azurerm_private_dns_zone', 'dns'),
+  r('azurerm_log_analytics_workspace', 'logs'),
+  r('azurerm_monitor_action_group', 'alert'),
+  r('azurerm_application_insights', 'apm'),
+  r('azurerm_data_factory', 'etl'),
+  r('azurerm_databricks_workspace', 'analytics'),
 ]
+
+export const AZURE_NOISE = ['azurerm_key_vault_secret', 'azurerm_storage_blob', 'azurerm_role_definition']
 
 export const AZURE_CONNECTORS = [
   'azurerm_lb_backend_address_pool', 'azurerm_lb_rule', 'azurerm_lb_probe',

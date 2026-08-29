@@ -149,6 +149,18 @@ architecture-gate:
   allow_failure: false
 ```
 
+## Trying it on your own repositories first
+
+```bash
+ARCHSIM_SCAN_ROOT=~/src node test/scan.mjs
+```
+
+Runs the compiler over every `.tf` file it finds and reports parse failures, lost
+bytes, non-surgical patches and — per module directory — whether the resulting
+graph has arrows. Nothing is written. It is the honest way to find out how much
+of *your* estate the mapping tables understand before you wire a gate into CI,
+and the unmapped census it prints is the list of rules worth contributing.
+
 ## Airgapped runners
 
 The CLI has no runtime dependencies outside `@archsim/*` — asserted in the suite

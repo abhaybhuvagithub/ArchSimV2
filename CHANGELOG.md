@@ -86,9 +86,39 @@ platform. Phases 0–5 of [`docs/DESIGN.md`](docs/DESIGN.md).
 - Panels for simulate, gate, discrete-event chaos, twin and the code patch —
   each calling the same packages the CLI calls.
 
+### Hardening against real repositories
+
+Running the compiler over ~6,800 files of real Terraform found four bugs that a
+self-written corpus could not reach. All four are now fixtures.
+
+- `module` blocks threw a `ReferenceError` and aborted the ingest — a quarter of
+  real files contain one. Modules are now connectors: not components, but
+  traffic-carrying, because real Terraform wires services together by passing
+  one module's outputs into another's inputs.
+- String interpolations containing quotes (`"${formatlist("arn:%s", x)}"`) ended
+  the string early and miscounted every brace after it. Interpolations are now
+  tracked by depth with inner strings consumed recursively.
+- Provisioning glue was drawn as architecture: one repository contributed 555
+  `null_resource` boxes. A third disposition, `noise`, covers glue, settings on a
+  resource that is already a node, and sub-resources detected structurally rather
+  than by enumeration. Classified, never dropped — the bytes still round-trip.
+- Edge inference over-connected. A shared `module "vpc"` turned a six-component
+  example into a near-complete graph. Connectors are now rejected as hubs when
+  they touch more than two components directly, and an edge is never invented
+  between two components we could not identify.
+
+Also: 38 mapping rules added because a real repository had the resource and the
+canvas rendered it as an anonymous grey box; the patch attribute is now read off
+the block rather than assumed to be `count`; and generic Terraform names (`this`,
+`main`, `default`) fall back to the resource type, so a canvas no longer shows
+six boxes labelled "this".
+
+`test/scan.mjs` is the tool that found them, committed and pointable at your own
+repositories via `ARCHSIM_SCAN_ROOT`.
+
 ### Verification
 
-- 376 checks, including a 17-fixture hostile round-trip corpus for HCL and four
-  for YAML.
+- 410 checks, including a 17-fixture hostile round-trip corpus for HCL, seven
+  real-world regression fixtures and four for YAML.
 - CI gates ArchSim's own example estate: the baseline must pass, and the
   regression plan must fail with a priced repair.

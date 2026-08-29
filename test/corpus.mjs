@@ -243,6 +243,153 @@ resource "google_redis_instance" "cache" {
   },
 ]
 
+// ── fixtures earned the hard way ────────────────────────────────────────────
+//
+// Every entry below is a reduction of something that actually broke when the
+// compiler was first run over ~6,800 files of real Terraform (the
+// terraform-aws-modules suite, cloudposse components, Azure quickstarts and the
+// AWS provider's own test corpus). They are here because a synthetic corpus
+// written by the same person who wrote the parser tests only what that person
+// already thought of.
+
+export const REAL_WORLD_CORPUS = [
+  {
+    name: 'module-block',
+    // 25% of real files contain one. An early build threw ReferenceError on
+    // every single one of them.
+    text: `module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.0.0"
+
+  name = "prod"
+  cidr = "10.0.0.0/16"
+}
+
+resource "aws_instance" "web" {
+  count     = 2
+  subnet_id = module.vpc.private_subnets[0]
+  ami       = "ami-1"
+}
+`,
+  },
+  {
+    name: 'interpolation-with-nested-quotes',
+    // `"${formatlist("arn:%s", x)}"` — a scanner that stops at the next quote
+    // stops inside the interpolation, and every brace after it is miscounted.
+    text: `resource "aws_iam_role_policy" "chamber" {
+  name = "chamber"
+
+  ssm_resources = [
+    "\${formatlist("arn:aws:ssm:%s:%s:parameter/%s/*", data.aws_region.default.name, data.aws_caller_identity.default.account_id, var.parameter_groups)}",
+  ]
+}
+
+resource "aws_instance" "web" {
+  count = 3
+  ami   = "ami-1"
+}
+`,
+  },
+  {
+    name: 'interpolation-with-object',
+    text: `resource "aws_ecs_task_definition" "app" {
+  family                = "app"
+  container_definitions = "\${jsonencode([{ name = "app", image = "nginx", memory = 512 }])}"
+}
+
+resource "aws_ecs_service" "app" {
+  name          = "app"
+  desired_count = 4
+}
+`,
+  },
+  {
+    name: 'provisioning-noise',
+    // A real repository contributed 555 null_resources. Drawing them is worse
+    // than useless.
+    text: `resource "random_pet" "suffix" {
+  length = 2
+}
+
+resource "random_string" "id" {
+  length = 8
+}
+
+resource "null_resource" "wait" {
+  triggers = {
+    always = timestamp()
+  }
+}
+
+resource "tls_private_key" "key" {
+  algorithm = "RSA"
+}
+
+resource "aws_s3_bucket" "assets" {
+  bucket = "assets"
+}
+
+resource "aws_s3_bucket_versioning" "assets" {
+  bucket = aws_s3_bucket.assets.id
+}
+
+resource "aws_s3_object" "seed" {
+  bucket = aws_s3_bucket.assets.id
+  key    = "seed.json"
+}
+`,
+  },
+  {
+    name: 'generic-names',
+    // Terraform convention names the primary resource `this`. A faithful label
+    // puts five boxes called "this" on the canvas.
+    text: `resource "aws_cognito_user_pool" "this" {
+  name = null
+}
+
+resource "aws_instance" "this" {
+  count = 2
+  ami   = "ami-1"
+}
+
+resource "aws_instance" "other" {
+  count = 1
+  ami   = "ami-1"
+}
+`,
+  },
+  {
+    name: 'hub-module',
+    // Every resource consumes the vpc module's outputs. Hopping through it
+    // turned a six-component example into a near-complete graph.
+    text: `module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+  name   = "prod"
+}
+
+resource "aws_instance" "a" { ami = "ami-1"  subnet_id = module.vpc.private_subnets[0] }
+resource "aws_instance" "b" { ami = "ami-1"  subnet_id = module.vpc.private_subnets[1] }
+resource "aws_db_instance" "c" { identifier = "c"  db_subnet_group_name = module.vpc.database_subnet_group }
+resource "aws_elasticache_cluster" "d" { cluster_id = "d"  subnet_group_name = module.vpc.elasticache_subnet_group }
+resource "aws_s3_bucket" "e" { bucket = "e" }
+resource "aws_sqs_queue" "f" { name = "f" }
+`,
+  },
+  {
+    name: 'implicit-count-attribute',
+    // Refusing with "has no `count` attribute" about a block that plainly
+    // declares `desired_capacity` two lines below is right to refuse and wrong
+    // about why.
+    text: `resource "aws_autoscaling_group" "workers" {
+  name             = "workers"
+  desired_capacity = 4
+  min_size         = 2
+  max_size         = 10
+}
+`,
+  },
+]
+
 export const K8S_CORPUS = [
   {
     name: 'deployment-plain',
