@@ -1,0 +1,20 @@
+{
+  "name": "archsim-v2",
+  "version": "2.0.0",
+  "private": true,
+  "description": "ArchSim v2 — enterprise digital twin platform: IR, analytic + discrete-event simulators, bidirectional IaC compiler, CI architecture gate, telemetry twin.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/canvas"
+  ],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "verify": "node test/verify.mjs",
+    "gate": "node packages/cli/bin/archsim.mjs",
+    "dev": "npm --workspace @archsim/canvas run dev",
+    "build": "npm --workspace @archsim/canvas run build",
+    "preview": "npm --workspace @archsim/canvas run preview"
+  },
+  "license": "MIT"
+}

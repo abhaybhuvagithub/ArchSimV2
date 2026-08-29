@@ -1,0 +1,197 @@
+# A small production-shaped namespace: an ingress, two services, a Redis cache,
+# a Postgres StatefulSet and a worker reading a queue.
+#
+# ArchSim reads this without a cluster (Mode B) and reads `kubectl get -o json`
+# with one (Mode A). Both produce the same IR shape; the live one is exact.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prod
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: public
+  namespace: prod
+spec:
+  rules:
+    - host: shop.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: checkout
+                port:
+                  number: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout
+  namespace: prod
+spec:
+  selector:
+    app: checkout
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: prod
+  labels:
+    app: checkout
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      containers:
+        - name: checkout
+          image: registry.example.com/shop/checkout:1.42.0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: postgres://orders.prod.svc.cluster.local:5432/orders
+            - name: CACHE_HOST
+              value: sessions.prod.svc.cluster.local
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: checkout
+  namespace: prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: checkout
+  minReplicas: 4
+  maxReplicas: 24
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sessions
+  namespace: prod
+spec:
+  selector:
+    app: sessions
+  ports:
+    - port: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sessions
+  namespace: prod
+  labels:
+    app: sessions
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: sessions
+  template:
+    metadata:
+      labels:
+        app: sessions
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2-alpine
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders
+  namespace: prod
+spec:
+  selector:
+    app: orders
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: orders
+  namespace: prod
+  labels:
+    app: orders
+spec:
+  serviceName: orders
+  replicas: 2
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16.3
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fulfilment-worker
+  namespace: prod
+  labels:
+    app: fulfilment-worker
+  annotations:
+    archsim.io/edge: orders
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fulfilment-worker
+  template:
+    metadata:
+      labels:
+        app: fulfilment-worker
+    spec:
+      containers:
+        - name: worker
+          image: registry.example.com/shop/fulfilment-worker:1.7.3
+          env:
+            - name: DATABASE_URL
+              value: postgres://orders.prod.svc.cluster.local:5432/orders
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi

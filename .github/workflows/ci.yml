@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: verification suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      # The suite is the strategy: every claim the README makes is one of these
+      # checks, and they run on every push.
+      - run: npm run verify
+      - run: npm run build
+
+  dogfood:
+    name: gate ArchSim's own example estate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      # The baseline must pass its own gate. If ArchSim cannot keep its own
+      # example green, it has no business blocking anyone else's pull request.
+      - name: baseline passes
+        run: node packages/cli/bin/archsim.mjs gate
+             --ir examples/archsim/checkout.lock.json
+             --slo examples/archsim/slo.yaml
+             --runs 300 --no-warn-exit
+      # …and the regression plan must fail it, or the gate is decorative.
+      - name: regression fails, with a priced repair
+        run: |
+          set +e
+          node packages/cli/bin/archsim.mjs gate \
+            --plan examples/terraform/tfplan-regression.json \
+            --base examples/archsim/checkout.lock.json \
+            --slo examples/archsim/slo.yaml \
+            --runs 300 --format md --out gate-report.md
+          CODE=$?
+          set -e
+          if [ "$CODE" != "1" ]; then
+            echo "expected the regression plan to fail the gate (exit 1), got $CODE"
+            exit 1
+          fi
+          cat gate-report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: engine self-test against closed-form theory
+        run: node packages/cli/bin/archsim.mjs selftest
+
+  pages:
+    name: deploy the studio
+    if: github.ref == 'refs/heads/main'
+    needs: [verify, dogfood]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/canvas/dist
+      - id: deploy
+        uses: actions/deploy-pages@v4

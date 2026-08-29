@@ -1,0 +1,14 @@
+{
+  "name": "@archsim/ir",
+  "version": "2.0.0",
+  "description": "ArchSim IR 2.0 — the contract every subsystem speaks. Schema, validator, ULID identity, v1 migration, structural diff and three-way merge.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "types/ir.d.ts",
+  "exports": {
+    ".": "./src/index.js",
+    "./schema.json": "./schema/archir-2.0.schema.json"
+  },
+  "files": ["src", "types", "schema"],
+  "license": "MIT"
+}

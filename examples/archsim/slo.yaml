@@ -1,0 +1,50 @@
+# SLOs for the example checkout system.
+#
+# These are the thresholds a pull request has to clear. Each one is scoped to a
+# workload, and — where it only means something in steady state — to a scenario.
+
+gate:
+  runs: 400
+  seed: 42
+  passPct: 95
+  riskPct: 80
+  quickFix: true
+
+slos:
+  - id: latency
+    metric: p99_ms
+    op: "<="
+    threshold: 800
+    under: peak
+
+  - id: errors
+    metric: error_rate
+    op: "<="
+    threshold: 0.001
+    under: all
+
+  # Availability is a steady-state target: measured during an AZ loss it is
+  # measuring the AZ loss, not the design. The AZ scenario is gated by the
+  # error-rate SLO above, which is where it belongs.
+  - id: availability
+    metric: availability
+    op: ">="
+    threshold: 0.999
+    scenarios: [nominal]
+
+  - id: budget
+    metric: monthly_cost_usd
+    op: "<="
+    threshold: 4000
+
+workloads:
+  - id: peak
+    arrival: {dist: diurnal, rps: 4000, params: {peakFactor: 3}}
+    mix: {readPct: 80}
+
+scenarios:
+  - fault: az
+  - fault: retry
+    target: "kind:sql"
+  - fault: crash
+    target: "kind:app"

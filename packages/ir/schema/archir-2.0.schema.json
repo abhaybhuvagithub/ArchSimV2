@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://archsim.dev/schema/archir-2.0.schema.json",
+  "title": "ArchIR 2.0",
+  "description": "ArchSim intermediate representation. The single source of truth: the canvas and the infrastructure code are both projections of this document.",
+  "type": "object",
+  "required": ["irVersion", "meta", "nodes", "edges", "passthrough"],
+  "additionalProperties": false,
+  "properties": {
+    "irVersion": { "const": "2.0" },
+    "meta": {
+      "type": "object",
+      "required": ["name", "createdBy", "updatedAt"],
+      "properties": {
+        "name": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+    "workloads": { "type": "array", "items": { "$ref": "#/$defs/workload" } },
+    "slos": { "type": "array", "items": { "$ref": "#/$defs/slo" } },
+    "deployments": { "type": "array", "items": { "type": "object" } },
+    "passthrough": { "type": "array", "items": { "$ref": "#/$defs/passthrough" } }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "label", "capacity", "bindings", "attrs"],
+      "properties": {
+        "id": { "type": "string", "description": "ULID. Never derived from the label — identity lives in the binding, so renames round-trip." },
+        "kind": { "type": "string" },
+        "label": { "type": "string" },
+        "capacity": { "$ref": "#/$defs/capacity" },
+        "bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+        "telemetry": { "$ref": "#/$defs/telemetry" },
+        "layout": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+        "overrides": { "type": "object" },
+        "attrs": { "type": "object" }
+      }
+    },
+    "capacity": {
+      "type": "object",
+      "required": ["replicas", "capPerReplica", "latencyMs", "availability", "provenance", "jitter"],
+      "properties": {
+        "replicas": { "type": "integer", "minimum": 0 },
+        "capPerReplica": { "oneOf": [{ "type": "number", "minimum": 0 }, { "const": "Infinity" }] },
+        "latencyMs": {
+          "type": "object",
+          "required": ["dist", "p50", "cv"],
+          "properties": {
+            "dist": { "enum": ["const", "exponential", "lognormal"] },
+            "p50": { "type": "number", "minimum": 0 },
+            "cv": { "type": "number", "minimum": 0 }
+          }
+        },
+        "availability": { "type": "number", "minimum": 0, "maximum": 1 },
+        "concurrency": { "type": "integer", "minimum": 0 },
+        "queueDepth": { "type": "integer", "minimum": 0 },
+        "cacheHit": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source": { "type": "boolean" },
+        "provenance": {
+          "type": "object",
+          "required": ["cls", "basis", "refs"],
+          "properties": {
+            "cls": { "enum": ["benchmark", "vendor", "modeled", "telemetry"] },
+            "basis": { "type": "string" },
+            "refs": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "jitter": {
+          "type": "object",
+          "description": "Monte-Carlo prior. v1 stated ±40% as a blanket disclaimer; here it is per node and telemetry tightens it.",
+          "required": ["capPct", "latPct"],
+          "properties": { "capPct": { "type": "number", "minimum": 0 }, "latPct": { "type": "number", "minimum": 0 } }
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "required": ["lang", "file", "address", "managed"],
+      "properties": {
+        "lang": { "enum": ["hcl", "k8s", "plan-json"] },
+        "file": { "type": "string" },
+        "address": { "type": "string" },
+        "range": {
+          "type": "object",
+          "required": ["startByte", "endByte"],
+          "properties": { "startByte": { "type": "integer" }, "endByte": { "type": "integer" } }
+        },
+        "managed": {
+          "enum": ["full", "partial", "observed"],
+          "description": "full = may regenerate; partial = edit only mapped attributes; observed = render, never write."
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "required": ["confidence"],
+      "properties": {
+        "service": { "type": "string" },
+        "k8s": { "type": "object", "properties": { "namespace": { "type": "string" }, "workload": { "type": "string" } } },
+        "promSelector": { "type": "string" },
+        "ddScope": { "type": "string" },
+        "confidence": { "enum": ["declared", "matched", "heuristic"] }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["id", "from", "to", "callSemantics"],
+      "properties": {
+        "id": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "callSemantics": { "enum": ["sync", "async", "fanout-parallel", "fanout-sequential"] },
+        "protocol": { "enum": ["http", "grpc", "sql", "amqp", "kafka", "custom"] },
+        "weight": { "type": "number" },
+        "readFrac": { "type": "number", "minimum": 0, "maximum": 1 },
+        "timeoutMs": { "type": "number", "minimum": 0 },
+        "retry": {
+          "type": "object",
+          "properties": {
+            "max": { "type": "integer", "minimum": 0 },
+            "backoffMs": { "type": "number", "minimum": 0 },
+            "jitter": { "enum": ["none", "full", "equal"] },
+            "budgetPct": { "type": "number", "minimum": 0 }
+          }
+        },
+        "breaker": {
+          "type": "object",
+          "properties": {
+            "windowSec": { "type": "number" },
+            "errThreshold": { "type": "number" },
+            "minSamples": { "type": "integer" },
+            "halfOpenProbes": { "type": "integer" },
+            "cooloffMs": { "type": "number" }
+          }
+        },
+        "confidence": { "enum": ["high", "medium", "low"] },
+        "attrs": { "type": "object" }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "required": ["id", "arrival"],
+      "properties": {
+        "id": { "type": "string" },
+        "arrival": {
+          "type": "object",
+          "required": ["dist", "rps"],
+          "properties": {
+            "dist": { "enum": ["const", "poisson", "diurnal", "spike"] },
+            "rps": { "type": "number", "exclusiveMinimum": 0 },
+            "params": { "type": "object" }
+          }
+        },
+        "mix": { "type": "object", "properties": { "readPct": { "type": "number", "minimum": 0, "maximum": 100 } } }
+      }
+    },
+    "slo": {
+      "type": "object",
+      "required": ["id", "scope", "metric", "op", "threshold"],
+      "properties": {
+        "id": { "type": "string" },
+        "scope": {
+          "oneOf": [
+            { "const": "system" },
+            { "type": "object", "required": ["node"], "properties": { "node": { "type": "string" } } },
+            { "type": "object", "required": ["edge"], "properties": { "edge": { "type": "string" } } }
+          ]
+        },
+        "metric": { "enum": ["p99_ms", "p95_ms", "p50_ms", "error_rate", "availability", "throughput_rps", "monthly_cost_usd"] },
+        "op": { "enum": ["<=", ">="] },
+        "threshold": { "type": "number" },
+        "under": { "type": "string" },
+        "scenarios": { "type": "array", "items": { "type": "string" }, "description": "Chaos scenarios this SLO must survive. Omitted = all declared scenarios." }
+      }
+    },
+    "passthrough": {
+      "type": "object",
+      "description": "Source text the mappers chose not to model. Re-emitted byte for byte — the anti-tarpit rule.",
+      "required": ["lang", "file", "text"],
+      "properties": {
+        "lang": { "enum": ["hcl", "k8s"] },
+        "file": { "type": "string" },
+        "text": { "type": "string" },
+        "anchorAfter": { "type": "string" }
+      }
+    }
+  }
+}

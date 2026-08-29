@@ -1,0 +1,123 @@
+name: ArchSim Architecture Gate
+description: >-
+  Simulate the architecture a pull request would produce, evaluate SLOs across
+  sampled worlds and chaos scenarios, and comment with the verdict and the price
+  of the cheapest repair.
+author: ArchSim
+branding:
+  icon: activity
+  color: blue
+
+inputs:
+  plan:
+    description: 'Terraform plan JSON (`terraform show -json tfplan > tfplan.json`). Exact — every count expanded.'
+    required: false
+  hcl:
+    description: 'Directory of .tf files, for repos without a plan step. Best-effort; dynamic counts degrade loudly.'
+    required: false
+  k8s:
+    description: 'Directory of Kubernetes manifests, or `kubectl get -A -o json` output.'
+    required: false
+  ir:
+    description: 'A committed ArchIR document, if you produce one yourself.'
+    required: false
+  base:
+    description: 'The IR of the base branch ("twin lockfile"), so the comment can say "was 99%, now 61%".'
+    required: false
+    default: 'archsim.lock.json'
+  slo:
+    description: 'SLO configuration file.'
+    required: false
+    default: '.archsim/slo.yaml'
+  runs:
+    description: 'Monte-Carlo runs per workload × scenario.'
+    required: false
+    default: '500'
+  seed:
+    description: 'Random seed. The same seed produces the same comment — a gate that wobbles is a gate people learn to ignore.'
+    required: false
+    default: '42'
+  comment:
+    description: 'Post a sticky comment on the pull request.'
+    required: false
+    default: 'true'
+  sarif:
+    description: 'Also write a SARIF file, so findings land in the Files changed view next to the line that caused them.'
+    required: false
+    default: 'true'
+  fail-on-risk:
+    description: 'Treat error-budget risk (exit 2) as a failure.'
+    required: false
+    default: 'false'
+
+outputs:
+  verdict:
+    description: 'pass | risk | fail'
+    value: ${{ steps.gate.outputs.verdict }}
+  exit-code:
+    description: '0 pass · 1 violation · 2 risk'
+    value: ${{ steps.gate.outputs.exit-code }}
+  report:
+    description: 'Path to the markdown report.'
+    value: ${{ steps.gate.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Run the architecture gate
+      id: gate
+      shell: bash
+      run: |
+        set +e
+        ARGS=""
+        [ -n "${{ inputs.plan }}" ] && ARGS="$ARGS --plan ${{ inputs.plan }}"
+        [ -n "${{ inputs.hcl }}" ]  && ARGS="$ARGS --hcl ${{ inputs.hcl }}"
+        [ -n "${{ inputs.k8s }}" ]  && ARGS="$ARGS --k8s ${{ inputs.k8s }}"
+        [ -n "${{ inputs.ir }}" ]   && ARGS="$ARGS --ir ${{ inputs.ir }}"
+        [ -f "${{ inputs.base }}" ] && ARGS="$ARGS --base ${{ inputs.base }}"
+
+        FORMATS="md,json"
+        [ "${{ inputs.sarif }}" = "true" ] && FORMATS="$FORMATS,sarif"
+
+        node "${{ github.action_path }}/packages/cli/bin/archsim.mjs" gate \
+          $ARGS \
+          --slo "${{ inputs.slo }}" \
+          --runs "${{ inputs.runs }}" \
+          --seed "${{ inputs.seed }}" \
+          --format "$FORMATS" \
+          --out gate-report.md
+        CODE=$?
+        set -e
+
+        VERDICT=pass
+        [ "$CODE" = "1" ] && VERDICT=fail
+        [ "$CODE" = "2" ] && VERDICT=risk
+        echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$CODE" >> "$GITHUB_OUTPUT"
+        echo "report=gate-report.md" >> "$GITHUB_OUTPUT"
+
+        # Exit 3 means the tool itself failed, which must never be reported as a
+        # clean pass — that is the one outcome a gate is not allowed to fudge.
+        if [ "$CODE" = "3" ]; then exit 3; fi
+        if [ "$CODE" = "1" ]; then exit 1; fi
+        if [ "$CODE" = "2" ] && [ "${{ inputs.fail-on-risk }}" = "true" ]; then exit 1; fi
+        exit 0
+
+    - name: Upload SARIF
+      if: inputs.sarif == 'true' && hashFiles('gate-report.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: gate-report.sarif
+        category: archsim
+
+    - name: Sticky comment
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: archsim-architecture-gate
+        path: gate-report.md

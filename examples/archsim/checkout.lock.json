@@ -1,0 +1,401 @@
+{
+  "irVersion": "2.0",
+  "meta": {
+    "name": "checkout",
+    "createdBy": "archsim-iac",
+    "updatedAt": "1970-01-01T00:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "00000000002PT15135AS1WR25P",
+      "kind": "blob",
+      "label": "checkout-receipts-prod",
+      "capacity": {
+        "replicas": 1,
+        "capPerReplica": 30000,
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 30,
+          "cv": 0.5
+        },
+        "availability": 0.999,
+        "concurrency": 1440,
+        "queueDepth": 4096,
+        "provenance": {
+          "cls": "vendor",
+          "basis": "ArchSim catalog seed for 'Object Storage' — not a measurement of your system",
+          "refs": []
+        },
+        "jitter": {
+          "capPct": 30,
+          "latPct": 30
+        }
+      },
+      "bindings": [
+        {
+          "lang": "plan-json",
+          "file": "examples/terraform/tfplan.json",
+          "address": "aws_s3_bucket.receipts",
+          "managed": "observed"
+        }
+      ],
+      "attrs": {
+        "tfType": "aws_s3_bucket"
+      }
+    },
+    {
+      "id": "00000000007HC7N11R02WPQ9HP",
+      "kind": "sql",
+      "label": "checkout-db",
+      "capacity": {
+        "replicas": 2,
+        "capPerReplica": 11000,
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 10,
+          "cv": 0.5
+        },
+        "availability": 0.9995,
+        "concurrency": 176,
+        "queueDepth": 704,
+        "provenance": {
+          "cls": "vendor",
+          "basis": "db.r6g.xlarge: 8 size-units × 1.1 family bias vs the catalog's reference `large`",
+          "refs": [
+            "https://aws.amazon.com/rds/pricing/"
+          ]
+        },
+        "jitter": {
+          "capPct": 30,
+          "latPct": 30
+        }
+      },
+      "bindings": [
+        {
+          "lang": "plan-json",
+          "file": "examples/terraform/tfplan.json",
+          "address": "aws_db_instance.main",
+          "managed": "observed"
+        }
+      ],
+      "attrs": {
+        "engine": "btree",
+        "replication": "leader",
+        "tfType": "aws_db_instance"
+      }
+    },
+    {
+      "id": "00000000009NZSH5RZ24W9XKK6",
+      "kind": "app",
+      "label": "fulfilment",
+      "capacity": {
+        "replicas": 4,
+        "capPerReplica": 2000,
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 25,
+          "cv": 0.5
+        },
+        "availability": 0.9999,
+        "concurrency": 80,
+        "queueDepth": 320,
+        "provenance": {
+          "cls": "vendor",
+          "basis": "m6i.large: 4 size-units × 1 family bias vs the catalog's reference `large`",
+          "refs": [
+            "https://aws.amazon.com/ec2/pricing/on-demand/"
+          ]
+        },
+        "jitter": {
+          "capPct": 30,
+          "latPct": 30
+        }
+      },
+      "bindings": [
+        {
+          "lang": "plan-json",
+          "file": "examples/terraform/tfplan.json",
+          "address": "aws_instance.fulfilment",
+          "managed": "observed"
+        }
+      ],
+      "attrs": {
+        "tfType": "aws_instance",
+        "expandedFrom": 4
+      }
+    },
+    {
+      "id": "0000000000ADAM9XR731MPMKRW",
+      "kind": "app",
+      "label": "checkout",
+      "capacity": {
+        "replicas": 6,
+        "capPerReplica": 4000,
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 25,
+          "cv": 0.5
+        },
+        "availability": 0.9999,
+        "concurrency": 160,
+        "queueDepth": 640,
+        "provenance": {
+          "cls": "vendor",
+          "basis": "m6i.xlarge: 8 size-units × 1 family bias vs the catalog's reference `large`",
+          "refs": [
+            "https://aws.amazon.com/ec2/pricing/on-demand/"
+          ]
+        },
+        "jitter": {
+          "capPct": 30,
+          "latPct": 30
+        }
+      },
+      "bindings": [
+        {
+          "lang": "plan-json",
+          "file": "examples/terraform/tfplan.json",
+          "address": "aws_instance.checkout",
+          "managed": "observed"
+        }
+      ],
+      "attrs": {
+        "tfType": "aws_instance",
+        "expandedFrom": 6
+      }
+    },
+    {
+      "id": "0000000000E0YXJ6BQEE98HXP5",
+      "kind": "cache",
+      "label": "sessions",
+      "capacity": {
+        "replicas": 2,
+        "capPerReplica": 110000,
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 1,
+          "cv": 0.5
+        },
+        "availability": 0.999,
+        "concurrency": 176,
+        "queueDepth": 704,
+        "cacheHit": 0.8,
+        "provenance": {
+          "cls": "vendor",
+          "basis": "cache.r6g.large: 4 size-units × 1.1 family bias vs the catalog's reference `large`",
+          "refs": []
+        },
+        "jitter": {
+          "capPct": 30,
+          "latPct": 30
+        }
+      },
+      "bindings": [
+        {
+          "lang": "plan-json",
+          "file": "examples/terraform/tfplan.json",
+          "address": "aws_elasticache_replication_group.sessions",
+          "managed": "observed"
+        }
+      ],
+      "attrs": {
+        "tfType": "aws_elasticache_replication_group"
+      }
+    },
+    {
+      "id": "0000000000ECCD17PGZSY2KG5J",
+      "kind": "worker",
+      "label": "checkout-hook",
+      "capacity": {
+        "replicas": 1,
+        "capPerReplica": 500,
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 100,
+          "cv": 0.7
+        },
+        "availability": 0.9995,
+        "concurrency": 80,
+        "queueDepth": 320,
+        "provenance": {
+          "cls": "vendor",
+          "basis": "512 MB Lambda: CPU is allocated proportionally to memory, so this scales both throughput and service time",
+          "refs": [
+            "https://docs.aws.amazon.com/lambda/latest/dg/configuration-memory.html"
+          ]
+        },
+        "jitter": {
+          "capPct": 30,
+          "latPct": 30
+        }
+      },
+      "bindings": [
+        {
+          "lang": "plan-json",
+          "file": "examples/terraform/tfplan.json",
+          "address": "aws_lambda_function.checkout_hook",
+          "managed": "observed"
+        }
+      ],
+      "attrs": {
+        "tfType": "aws_lambda_function"
+      }
+    },
+    {
+      "id": "0000000000G1T91RRFEEAX4D77",
+      "kind": "lb",
+      "label": "checkout-alb",
+      "capacity": {
+        "replicas": 1,
+        "capPerReplica": 100000,
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 1,
+          "cv": 0.5
+        },
+        "availability": 0.9999,
+        "concurrency": 160,
+        "queueDepth": 640,
+        "provenance": {
+          "cls": "vendor",
+          "basis": "ArchSim catalog seed for 'Load Balancer' — not a measurement of your system",
+          "refs": []
+        },
+        "jitter": {
+          "capPct": 30,
+          "latPct": 30
+        }
+      },
+      "bindings": [
+        {
+          "lang": "plan-json",
+          "file": "examples/terraform/tfplan.json",
+          "address": "aws_lb.main",
+          "managed": "observed"
+        }
+      ],
+      "attrs": {
+        "tfType": "aws_lb"
+      }
+    },
+    {
+      "id": "0000000000NYXQYR5XHPS86TXH",
+      "kind": "client",
+      "label": "users",
+      "capacity": {
+        "replicas": 1,
+        "capPerReplica": "Infinity",
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 0,
+          "cv": 0.5
+        },
+        "availability": 1,
+        "concurrency": 0,
+        "queueDepth": 0,
+        "source": true,
+        "provenance": {
+          "cls": "benchmark",
+          "basis": "ArchSim catalog seed for 'Client' — not a measurement of your system",
+          "refs": []
+        },
+        "jitter": {
+          "capPct": 25,
+          "latPct": 25
+        }
+      },
+      "bindings": [],
+      "attrs": {
+        "synthetic": true,
+        "note": "Added by ingest: infrastructure code does not contain its users. Entry points were inferred — correct them on the canvas if wrong."
+      }
+    },
+    {
+      "id": "0000000000TKWH4R50GT0CQG84",
+      "kind": "queue",
+      "label": "orders",
+      "capacity": {
+        "replicas": 1,
+        "capPerReplica": 50000,
+        "latencyMs": {
+          "dist": "lognormal",
+          "p50": 3,
+          "cv": 0.5
+        },
+        "availability": 0.999,
+        "concurrency": 240,
+        "queueDepth": 960,
+        "provenance": {
+          "cls": "vendor",
+          "basis": "ArchSim catalog seed for 'Message Queue' — not a measurement of your system",
+          "refs": []
+        },
+        "jitter": {
+          "capPct": 30,
+          "latPct": 30
+        }
+      },
+      "bindings": [
+        {
+          "lang": "plan-json",
+          "file": "examples/terraform/tfplan.json",
+          "address": "aws_sqs_queue.orders",
+          "managed": "observed"
+        }
+      ],
+      "attrs": {
+        "delivery": "atLeastOnce",
+        "tfType": "aws_sqs_queue"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "0000000000FG6TSM90EM15S6BX",
+      "from": "0000000000ECCD17PGZSY2KG5J",
+      "to": "00000000007HC7N11R02WPQ9HP",
+      "callSemantics": "sync",
+      "protocol": "sql",
+      "confidence": "high",
+      "attrs": {
+        "reason": "direct reference in the plan graph"
+      }
+    },
+    {
+      "id": "0000000000C0M6ZW33E9F2XV8S",
+      "from": "0000000000ECCD17PGZSY2KG5J",
+      "to": "0000000000TKWH4R50GT0CQG84",
+      "callSemantics": "async",
+      "protocol": "amqp",
+      "confidence": "high",
+      "attrs": {
+        "reason": "direct reference in the plan graph"
+      }
+    },
+    {
+      "id": "0000000000VEATKQ4Y9DBSM5PD",
+      "from": "0000000000G1T91RRFEEAX4D77",
+      "to": "0000000000ADAM9XR731MPMKRW",
+      "callSemantics": "sync",
+      "protocol": "http",
+      "confidence": "medium",
+      "attrs": {
+        "reason": "reference through aws_lb_listener → aws_lb_target_group → aws_lb_target_group_attachment"
+      }
+    },
+    {
+      "id": "0000000000TQMRMZ3D01662Z9Z",
+      "from": "0000000000NYXQYR5XHPS86TXH",
+      "to": "0000000000G1T91RRFEEAX4D77",
+      "callSemantics": "sync",
+      "confidence": "medium",
+      "attrs": {
+        "reason": "inferred entry point (no inbound dependency in the plan)"
+      }
+    }
+  ],
+  "workloads": [],
+  "slos": [],
+  "deployments": [],
+  "passthrough": []
+}

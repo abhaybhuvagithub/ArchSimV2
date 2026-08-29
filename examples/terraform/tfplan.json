@@ -1,0 +1,608 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.0.0.0/16",
+            "tags": {
+              "env": "prod"
+            }
+          }
+        },
+        {
+          "address": "aws_subnet.private[0]",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.0.0.0/24"
+          },
+          "index": 0
+        },
+        {
+          "address": "aws_subnet.private[1]",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.0.1.0/24"
+          },
+          "index": 1
+        },
+        {
+          "address": "aws_subnet.private[2]",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "cidr_block": "10.0.2.0/24"
+          },
+          "index": 2
+        },
+        {
+          "address": "aws_security_group.app",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "app-sg"
+          }
+        },
+        {
+          "address": "aws_lb.main",
+          "mode": "managed",
+          "type": "aws_lb",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "checkout-alb",
+            "load_balancer_type": "application",
+            "internal": false
+          }
+        },
+        {
+          "address": "aws_lb_target_group.app",
+          "mode": "managed",
+          "type": "aws_lb_target_group",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "checkout-tg",
+            "port": 8080
+          }
+        },
+        {
+          "address": "aws_lb_listener.https",
+          "mode": "managed",
+          "type": "aws_lb_listener",
+          "name": "https",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "port": 443,
+            "protocol": "HTTPS"
+          }
+        },
+        {
+          "address": "aws_instance.checkout[0]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.xlarge",
+            "ami": "ami-0abcdef1234567890",
+            "tags": {
+              "Name": "checkout"
+            }
+          },
+          "index": 0
+        },
+        {
+          "address": "aws_lb_target_group_attachment.checkout[0]",
+          "mode": "managed",
+          "type": "aws_lb_target_group_attachment",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "port": 8080
+          },
+          "index": 0
+        },
+        {
+          "address": "aws_instance.checkout[1]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.xlarge",
+            "ami": "ami-0abcdef1234567890",
+            "tags": {
+              "Name": "checkout"
+            }
+          },
+          "index": 1
+        },
+        {
+          "address": "aws_lb_target_group_attachment.checkout[1]",
+          "mode": "managed",
+          "type": "aws_lb_target_group_attachment",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "port": 8080
+          },
+          "index": 1
+        },
+        {
+          "address": "aws_instance.checkout[2]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.xlarge",
+            "ami": "ami-0abcdef1234567890",
+            "tags": {
+              "Name": "checkout"
+            }
+          },
+          "index": 2
+        },
+        {
+          "address": "aws_lb_target_group_attachment.checkout[2]",
+          "mode": "managed",
+          "type": "aws_lb_target_group_attachment",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "port": 8080
+          },
+          "index": 2
+        },
+        {
+          "address": "aws_instance.checkout[3]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.xlarge",
+            "ami": "ami-0abcdef1234567890",
+            "tags": {
+              "Name": "checkout"
+            }
+          },
+          "index": 3
+        },
+        {
+          "address": "aws_lb_target_group_attachment.checkout[3]",
+          "mode": "managed",
+          "type": "aws_lb_target_group_attachment",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "port": 8080
+          },
+          "index": 3
+        },
+        {
+          "address": "aws_instance.checkout[4]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.xlarge",
+            "ami": "ami-0abcdef1234567890",
+            "tags": {
+              "Name": "checkout"
+            }
+          },
+          "index": 4
+        },
+        {
+          "address": "aws_lb_target_group_attachment.checkout[4]",
+          "mode": "managed",
+          "type": "aws_lb_target_group_attachment",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "port": 8080
+          },
+          "index": 4
+        },
+        {
+          "address": "aws_instance.checkout[5]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.xlarge",
+            "ami": "ami-0abcdef1234567890",
+            "tags": {
+              "Name": "checkout"
+            }
+          },
+          "index": 5
+        },
+        {
+          "address": "aws_lb_target_group_attachment.checkout[5]",
+          "mode": "managed",
+          "type": "aws_lb_target_group_attachment",
+          "name": "checkout",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "port": 8080
+          },
+          "index": 5
+        },
+        {
+          "address": "aws_instance.fulfilment[0]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "fulfilment",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.large",
+            "ami": "ami-0abcdef1234567890"
+          },
+          "index": 0
+        },
+        {
+          "address": "aws_instance.fulfilment[1]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "fulfilment",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.large",
+            "ami": "ami-0abcdef1234567890"
+          },
+          "index": 1
+        },
+        {
+          "address": "aws_instance.fulfilment[2]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "fulfilment",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.large",
+            "ami": "ami-0abcdef1234567890"
+          },
+          "index": 2
+        },
+        {
+          "address": "aws_instance.fulfilment[3]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "fulfilment",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "instance_type": "m6i.large",
+            "ami": "ami-0abcdef1234567890"
+          },
+          "index": 3
+        },
+        {
+          "address": "aws_lambda_function.checkout_hook",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "checkout_hook",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "checkout-hook",
+            "memory_size": 512,
+            "timeout": 30,
+            "runtime": "nodejs20.x"
+          }
+        },
+        {
+          "address": "aws_iam_role.lambda",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "checkout-hook-role"
+          }
+        },
+        {
+          "address": "aws_db_instance.main",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "identifier": "checkout-db",
+            "engine": "postgres",
+            "instance_class": "db.r6g.xlarge",
+            "multi_az": true,
+            "allocated_storage": 200
+          }
+        },
+        {
+          "address": "aws_db_subnet_group.main",
+          "mode": "managed",
+          "type": "aws_db_subnet_group",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "checkout-db-subnets"
+          }
+        },
+        {
+          "address": "aws_elasticache_replication_group.sessions",
+          "mode": "managed",
+          "type": "aws_elasticache_replication_group",
+          "name": "sessions",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "replication_group_id": "checkout-sessions",
+            "node_type": "cache.r6g.large",
+            "num_cache_clusters": 2,
+            "engine": "redis"
+          }
+        },
+        {
+          "address": "aws_sqs_queue.orders",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "orders",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "name": "orders",
+            "visibility_timeout_seconds": 60
+          }
+        },
+        {
+          "address": "aws_s3_bucket.receipts",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "receipts",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "checkout-receipts-prod"
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.main",
+      "type": "aws_db_instance",
+      "change": {
+        "actions": [
+          "update"
+        ]
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_subnet.private",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "expressions": {
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.app",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "app",
+          "expressions": {
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_lb.main",
+          "mode": "managed",
+          "type": "aws_lb",
+          "name": "main",
+          "expressions": {
+            "subnets": {
+              "references": [
+                "aws_subnet.private",
+                "aws_subnet.private"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_lb_target_group.app",
+          "mode": "managed",
+          "type": "aws_lb_target_group",
+          "name": "app",
+          "expressions": {
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_lb_listener.https",
+          "mode": "managed",
+          "type": "aws_lb_listener",
+          "name": "https",
+          "expressions": {
+            "load_balancer_arn": {
+              "references": [
+                "aws_lb.main.arn",
+                "aws_lb.main"
+              ]
+            },
+            "default_action": {
+              "references": [
+                "aws_lb_target_group.app.arn",
+                "aws_lb_target_group.app"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_instance.checkout",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "checkout",
+          "expressions": {
+            "subnet_id": {
+              "references": [
+                "aws_subnet.private",
+                "aws_subnet.private"
+              ]
+            },
+            "vpc_security_group_ids": {
+              "references": [
+                "aws_security_group.app.id",
+                "aws_security_group.app"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_lb_target_group_attachment.checkout",
+          "mode": "managed",
+          "type": "aws_lb_target_group_attachment",
+          "name": "checkout",
+          "expressions": {
+            "target_group_arn": {
+              "references": [
+                "aws_lb_target_group.app.arn",
+                "aws_lb_target_group.app"
+              ]
+            },
+            "target_id": {
+              "references": [
+                "aws_instance.checkout",
+                "aws_instance.checkout"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_instance.fulfilment",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "fulfilment",
+          "expressions": {
+            "subnet_id": {
+              "references": [
+                "aws_subnet.private",
+                "aws_subnet.private"
+              ]
+            },
+            "count": {
+              "references": [
+                "var.app_replicas"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_function.checkout_hook",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "checkout_hook",
+          "expressions": {
+            "role": {
+              "references": [
+                "aws_iam_role.lambda.arn",
+                "aws_iam_role.lambda"
+              ]
+            },
+            "environment": {
+              "references": [
+                "aws_db_instance.main.endpoint",
+                "aws_db_instance.main",
+                "aws_sqs_queue.orders.url",
+                "aws_sqs_queue.orders"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_db_instance.main",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "main",
+          "expressions": {
+            "db_subnet_group_name": {
+              "references": [
+                "aws_db_subnet_group.main.name",
+                "aws_db_subnet_group.main"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_db_subnet_group.main",
+          "mode": "managed",
+          "type": "aws_db_subnet_group",
+          "name": "main",
+          "expressions": {
+            "subnet_ids": {
+              "references": [
+                "aws_subnet.private",
+                "aws_subnet.private"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_elasticache_replication_group.sessions",
+          "mode": "managed",
+          "type": "aws_elasticache_replication_group",
+          "name": "sessions",
+          "expressions": {}
+        },
+        {
+          "address": "aws_sqs_queue.orders",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "orders",
+          "expressions": {}
+        },
+        {
+          "address": "aws_s3_bucket.receipts",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "receipts",
+          "expressions": {}
+        }
+      ]
+    }
+  }
+}

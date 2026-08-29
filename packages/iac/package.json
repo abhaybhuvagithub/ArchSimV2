@@ -1,0 +1,11 @@
+{
+  "name": "@archsim/iac",
+  "version": "2.0.0",
+  "description": "Bidirectional IaC compiler — Terraform plan JSON, static HCL and Kubernetes into ArchIR, and surgical CST patches back out. Passthrough-verbatim: nothing unmodelled is ever lost.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": { ".": "./src/index.js" },
+  "files": ["src"],
+  "dependencies": { "@archsim/ir": "2.0.0", "@archsim/core": "2.0.0" },
+  "license": "MIT"
+}

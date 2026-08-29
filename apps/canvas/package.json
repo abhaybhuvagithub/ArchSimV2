@@ -1,0 +1,25 @@
+{
+  "name": "@archsim/canvas",
+  "version": "2.0.0",
+  "private": true,
+  "description": "The canvas — one projection of the IR. The code is the other.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "@archsim/ir": "2.0.0",
+    "@archsim/core": "2.0.0",
+    "@archsim/iac": "2.0.0",
+    "@archsim/des": "2.0.0",
+    "@archsim/twin": "2.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^7.0.0"
+  }
+}
