@@ -339,6 +339,28 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
   .palette, .side { display: none; }
 }
 
+/* Phone and split-pane widths. The top bar is the only row that cannot shrink
+   on its own — a select and three buttons on one line push the document 355px
+   wider than the viewport, and the whole page then scrolls sideways. Let it
+   wrap, let the select give up its width first, and drop the hash, which is a
+   detail nobody reads on a phone. */
+@media (max-width: 720px) {
+  .top { flex-wrap: wrap; row-gap: 10px; padding: 10px 14px; }
+  .brand { flex: 1 1 auto; min-width: 0; }
+  .topactions { flex-wrap: wrap; width: 100%; }
+  .topactions select { flex: 1 1 180px; min-width: 0; }
+  .hash { display: none; }
+  .verdict { flex-wrap: wrap; row-gap: 8px; }
+}
+
+@media (max-width: 520px) {
+  .brand .tag { display: none; }
+  /* An overview of a canvas this small costs more room than it returns. */
+  .minimap { display: none; }
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    Motion, state and overlays.
    
