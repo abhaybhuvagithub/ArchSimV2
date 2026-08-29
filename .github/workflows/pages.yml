@@ -1,0 +1,45 @@
+name: Pages
+
+# Deploying the studio is a separate workflow on purpose. It depends on a
+# repository *setting* — Settings → Pages → Source: GitHub Actions — and a
+# missing setting is not a broken build. Leaving it inside CI made the badge red
+# while the verification suite and the dogfood gate were both green, which is
+# the worst kind of signal: one that trains you to ignore it.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Only publish what passed.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/canvas/dist
+      - id: deploy
+        uses: actions/deploy-pages@v4

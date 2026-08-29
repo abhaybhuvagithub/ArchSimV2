@@ -13,14 +13,25 @@ import Canvas from './Canvas.jsx'
 import Inspector from './Inspector.jsx'
 import { SimulatePanel, GatePanel, DesPanel, TwinPanel, CodePanel } from './Panels.jsx'
 import { autoLayout } from './layout.js'
-import { EXAMPLE_PLAN, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_SLOS } from './examples.js'
+import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_SLOS } from './examples.js'
+import Verdict from './Verdict.jsx'
+import { useGate } from './useGate.js'
 
 const TABS = ['Simulate', 'Gate', 'Chaos (DES)', 'Twin', 'Code']
 
+const GATE_CONFIG = { runs: 200, seed: 42, thresholds: { passPct: 95, riskPct: 80 }, scenarios: EXAMPLE_SLOS.scenarios }
+
 export default function App() {
-  const [ir, setIr] = useState(() => loadExample())
-  const [baseIR, setBaseIR] = useState(() => loadExample())
+  // The studio opens on a worked example with two versions of the same estate —
+  // `main` and a pull request that shrinks it — because the gate's argument only
+  // lands when you can see a verdict move.
+  const [variants] = useState(() => ({ main: loadPlan(EXAMPLE_PLAN), pr: loadPlan(EXAMPLE_PLAN_PR) }))
+  const [variant, setVariant] = useState('pr')
+  const [comparable, setComparable] = useState(true)
+  const [ir, setIr] = useState(() => variants.pr)
+  const [baseIR, setBaseIR] = useState(() => variants.pr)
   const [sources, setSources] = useState(() => [{ path: 'main.tf', text: EXAMPLE_HCL }])
+  const gate = useGate(ir, GATE_CONFIG, comparable && variant === 'pr' ? variants.main : null)
   const [selected, setSelected] = useState(null)
   const [tab, setTab] = useState('Simulate')
   const [rps, setRps] = useState(4000)
@@ -123,6 +134,10 @@ export default function App() {
       setIr(laid)
       setBaseIR(laid)
       setSelected(null)
+      // Their infrastructure has no "main" to compare against until they commit
+      // a lockfile, so the comparison retires rather than comparing their design
+      // to our example.
+      setComparable(false)
       setTwin((t) => { t?.stop(); return null })
       setFrame(null); setGhosts([]); setDrift([]); setIncident(null)
     } catch (err) {
@@ -131,7 +146,13 @@ export default function App() {
   }, [])
 
   const validation = useMemo(() => validateIR(ir, { kinds: kinds() }), [ir])
-  const config = { runs: 300, seed: 42, thresholds: { passPct: 95, riskPct: 80 }, scenarios: EXAMPLE_SLOS.scenarios }
+
+  const switchVariant = useCallback((v) => {
+    setVariant(v)
+    setIr(variants[v])
+    setBaseIR(variants[v])
+    setSelected(null)
+  }, [variants])
 
   return (
     <div className="app">
@@ -159,6 +180,9 @@ export default function App() {
           <span className="hash" title="Content address of the IR. Two runs that print the same hash simulated the same architecture.">{irHash(ir)}</span>
         </div>
       </header>
+
+      <Verdict busy={gate.busy} result={gate.result} base={gate.base}
+               variant={variant} onVariant={switchVariant} comparable={comparable} />
 
       {importErr && <div className="banner error">Could not read that: {importErr}</div>}
       {validation.errors.length > 0 && <div className="banner error">{validation.errors.length} IR error(s): {validation.errors[0].path} {validation.errors[0].msg}</div>}
@@ -199,7 +223,7 @@ export default function App() {
           {TABS.map((t) => <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t}</button>)}
         </nav>
         {tab === 'Simulate' && <SimulatePanel ir={ir} rps={rps} setRps={setRps} scenario={scenario} setScenario={setScenario} />}
-        {tab === 'Gate' && <GatePanel ir={ir} config={config} />}
+        {tab === 'Gate' && <GatePanel gate={gate} config={GATE_CONFIG} variant={variant} comparable={comparable} />}
         {tab === 'Chaos (DES)' && <DesPanel ir={ir} rps={rps} scenario={scenario} />}
         {tab === 'Twin' && <TwinPanel twin={twin} frames={twin?.buffer.frames || []} ghosts={ghosts} drift={drift}
                                      onCalibrate={onCalibrate} incident={incident} scrubIndex={scrubIndex}
@@ -210,7 +234,7 @@ export default function App() {
   )
 }
 
-function loadExample() {
-  const { ir } = hclToIR([{ path: 'main.tf', text: EXAMPLE_HCL }], { managed: 'partial' })
+function loadPlan(planText) {
+  const { ir } = planJsonToIR(JSON.parse(planText), { file: 'tfplan.json', name: 'checkout' })
   return autoLayout(normalizeIR({ ...ir, slos: EXAMPLE_SLOS.slos, workloads: EXAMPLE_SLOS.workloads }))
 }

@@ -7,7 +7,9 @@
 // entire reason the engine was extracted from the app in Phase 0.
 
 import React, { useMemo, useState } from 'react'
-import { simulate, capacityReport, costReport, compileFaults, runMonteCarlo, evaluateSLOs, structuralRisks, findCheapestFix, FAULTS, label as sloLabel } from '@archsim/core'
+import { simulate, capacityReport, costReport, compileFaults, FAULTS, label as sloLabel } from '@archsim/core'
+import { Dist } from './Verdict.jsx'
+import { rowsWithBaseline } from './useGate.js'
 import { runDES, analyzeStarvation, analyzeStorm, analyzeBreakers } from '@archsim/des'
 import { emitChanges } from '@archsim/iac'
 import { serializeIR, irHash } from '@archsim/ir'
@@ -61,62 +63,63 @@ export function SimulatePanel({ ir, rps, setRps, scenario, setScenario }) {
   )
 }
 
-export function GatePanel({ ir, config }) {
-  const [result, setResult] = useState(null)
-  const [busy, setBusy] = useState(false)
+export function GatePanel({ gate, config, variant, comparable }) {
+  const { busy, result, base } = gate
+  const rows = rowsWithBaseline(result, base)
 
-  const run = () => {
-    setBusy(true)
-    // Deferred a tick so the button paints its busy state before the runner
-    // takes the thread. 400 runs is fast, not free.
-    setTimeout(() => {
-      const mc = runMonteCarlo(ir, { runs: config.runs, seed: config.seed, scenarios: config.scenarios })
-      const evaluation = evaluateSLOs(ir, mc, { thresholds: config.thresholds })
-      const risks = structuralRisks(ir, mc)
-      const quickFix = evaluation.ok && !evaluation.risky.length
-        ? null
-        : findCheapestFix(ir, { mcOpts: { runs: Math.min(config.runs, 120), seed: config.seed, scenarios: config.scenarios }, thresholds: config.thresholds })
-      setResult({ mc, evaluation, risks, quickFix })
-      setBusy(false)
-    }, 10)
-  }
+  if (busy && !result) return <div className="panel"><p className="muted">Sampling {config.runs} worlds across {config.scenarios.length + 1} scenarios…</p></div>
+  if (result?.error) return <div className="panel"><p className="risk">{result.error}</p></div>
+  if (!rows.length) return <div className="panel"><p className="muted">No SLOs on this design. Add them to <code>.archsim/slo.yaml</code> — a gate with no thresholds has no opinion.</p></div>
 
   return (
     <div className="panel">
       <div className="controls">
-        <button className="primary" onClick={run} disabled={busy}>{busy ? 'sampling worlds…' : `Run the gate (${config.runs} runs, seed ${config.seed})`}</button>
-        <span className="note">The same Monte-Carlo the CI job runs. A verdict here and a verdict on a pull request are the same computation.</span>
+        <span className="note">
+          The same Monte-Carlo the CI job runs, on the same seed. A verdict here and a verdict on a pull request
+          are the same computation — and the bar is a proportion of sampled worlds, not a point estimate.
+          The marker sits at the {config.thresholds.passPct}% pass threshold.
+        </span>
       </div>
 
-      {!ir.slos?.length && <p className="muted">No SLOs on this IR. Load the example, or add them to <code>.archsim/slo.yaml</code> — a gate with no thresholds has no opinion.</p>}
+      <table className="grid">
+        <thead>
+          <tr>
+            <th>SLO</th>
+            <th style={{ width: '38%' }}>holds in</th>
+            <th>worst scenario</th>
+            <th>drives</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.slo.id} className={r.verdict === 'fail' ? 'hot' : ''}>
+              <td>{sloLabel(r.slo)}</td>
+              <td>
+                <Dist holdPct={r.holdPct} verdict={r.verdict} passPct={config.thresholds.passPct}
+                      was={comparable && variant === 'pr' ? r.was?.holdPct ?? null : null} />
+              </td>
+              <td>{r.drivingScenario || '—'}</td>
+              <td>{{ pass: 'exit 0', fail: 'exit 1', risk: 'exit 2', skip: '—' }[r.verdict]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
-      {result && (
-        <>
-          <table className="grid">
-            <thead><tr><th>SLO</th><th>holds in</th><th>worst scenario</th><th></th></tr></thead>
-            <tbody>
-              {result.evaluation.results.map((r) => (
-                <tr key={r.slo.id} className={r.verdict}>
-                  <td>{sloLabel(r.slo)}</td>
-                  <td>{r.holdPct === null ? '—' : `${r.holdPct.toFixed(0)}% of worlds`}</td>
-                  <td>{r.drivingScenario || '—'}</td>
-                  <td>{{ pass: '✅', fail: '❌', risk: '⚠️', skip: '—' }[r.verdict]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {result.quickFix?.steps?.length > 0 && (
-            <div className="fix">
-              <strong>Cheapest fix:</strong> {result.quickFix.steps.map((s) => s.describe.replace(/`/g, '')).join(', then ')}
-              {' — '}{result.quickFix.costDelta >= 0 ? '+' : '−'}${Math.abs(Math.round(result.quickFix.costDelta)).toLocaleString()}/mo
-              {result.quickFix.fullyResolved ? ', which restores every gate.' : ', which improves but does not clear every gate.'}
-            </div>
-          )}
-
-          {result.risks.map((r, i) => <p key={i} className="risk">{r.msg.replace(/`/g, '')}</p>)}
-        </>
+      {result.quickFix?.steps?.length > 0 && (
+        <div className="fix">
+          <strong>Cheapest fix:</strong> {result.quickFix.steps.map((s) => s.describe.replace(/`/g, '')).join(', then ')}
+          {' — '}{result.quickFix.costDelta >= 0 ? '+' : '−'}${Math.abs(Math.round(result.quickFix.costDelta)).toLocaleString()}/mo
+          {result.quickFix.fullyResolved ? ', which restores every gate.' : ', which improves but does not clear every gate.'}
+          {base && (() => {
+            const saved = base.mc.cost.total - result.mc.cost.total
+            return saved > 0
+              ? ` That is ${Math.round((100 * result.quickFix.costDelta) / saved)}% of the $${Math.round(saved).toLocaleString()}/mo this change saves.`
+              : null
+          })()}
+        </div>
       )}
+
+      {result.risks.map((r, i) => <p key={i} className="risk">{r.msg.replace(/`/g, '')}</p>)}
     </div>
   )
 }
