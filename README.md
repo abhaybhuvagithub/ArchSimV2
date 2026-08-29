@@ -2,6 +2,8 @@
 
 **One IR. Three projections: the canvas, the infrastructure code, and production.**
 
+Live URL: https://abhaybhuvagithub.github.io/ArchSimV2/
+
 HashiCorp owns provisioning. Datadog owns observation. The seam between them —
 *"will this change hold up, and can you prove it before merge?"* — is unowned.
 ArchSim v2 is the shape of that seam.
