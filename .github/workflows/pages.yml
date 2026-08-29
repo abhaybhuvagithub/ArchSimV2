@@ -1,10 +1,14 @@
 name: Pages
 
-# Deploying the studio is a separate workflow on purpose. It depends on a
-# repository *setting* — Settings → Pages → Source: GitHub Actions — and a
-# missing setting is not a broken build. Leaving it inside CI made the badge red
-# while the verification suite and the dogfood gate were both green, which is
-# the worst kind of signal: one that trains you to ignore it.
+# Deploys the studio by pushing the built site to the `gh-pages` branch — the
+# same mechanism ArchSim 1.x uses, and the one that needs no repository setting
+# flipped by hand first. `actions/deploy-pages` is the more modern route, but it
+# requires Settings → Pages → Source: GitHub Actions to have been set, and a
+# deploy that cannot run until somebody clicks something is a deploy that reports
+# red for a week.
+#
+# Separate from CI on purpose: publishing is not a test, and a publishing problem
+# must never be reported as a broken build.
 
 on:
   workflow_run:
@@ -14,9 +18,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -24,12 +26,9 @@ concurrency:
 
 jobs:
   deploy:
-    # Only publish what passed.
+    # Publish only what passed.
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,9 +36,28 @@ jobs:
           node-version: '20'
       - run: npm install
       - run: npm run build
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: apps/canvas/dist
-      - id: deploy
-        uses: actions/deploy-pages@v4
+
+      # v1 learned this the hard way: a deploy that reuses a stale checkout can
+      # ship the *previous* build. Publish from a directory built in this run,
+      # and assert the bundle the page references actually exists before pushing.
+      - name: verify the built site before publishing
+        run: |
+          set -e
+          test -f apps/canvas/dist/index.html
+          ASSET=$(grep -o 'assets/[^"]*\.js' apps/canvas/dist/index.html | head -1)
+          test -n "$ASSET"
+          test -f "apps/canvas/dist/$ASSET"
+          echo "publishing $ASSET"
+
+      - name: publish to gh-pages
+        run: |
+          set -e
+          cp -r apps/canvas/dist /tmp/site
+          touch /tmp/site/.nojekyll
+          cd /tmp/site
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "studio built from ${GITHUB_SHA}"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
