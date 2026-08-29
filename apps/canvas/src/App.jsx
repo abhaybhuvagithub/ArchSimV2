@@ -4,18 +4,23 @@
 // came from, and production as the twin sees it. Nothing here owns the system —
 // the IR does, and each of the three is a projection with a way back.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { normalizeIR, validateIR, irHash, parseIR } from '@archsim/ir'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { normalizeIR, validateIR, irHash, parseIR, diffIR } from '@archsim/ir'
 import { kinds, capacityFor } from '@archsim/core'
 import { planJsonToIR, hclToIR, k8sToIR, k8sObjects, parseYamlDocs } from '@archsim/iac'
 import { Twin, syntheticSource, reproduceInSimulator } from '@archsim/twin'
-import Canvas from './Canvas.jsx'
+import Canvas, { Minimap } from './Canvas.jsx'
 import Inspector from './Inspector.jsx'
 import { SimulatePanel, GatePanel, DesPanel, TwinPanel, CodePanel } from './Panels.jsx'
 import { autoLayout } from './layout.js'
 import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_SLOS } from './examples.js'
 import Verdict from './Verdict.jsx'
 import { useGate } from './useGate.js'
+import { CommandPalette, Shortcuts, Tour } from './Overlays.jsx'
+import { useToast } from './Toast.jsx'
+import { buildTour, SHORTCUTS } from './tour.js'
+import * as persist from './persist.js'
+import { downloadIR, saveFile, gateMarkdown, copyText, exportSVG, exportPNG, shareLink, readShareLink } from './exporters.js'
 
 const TABS = ['Simulate', 'Gate', 'Chaos (DES)', 'Twin', 'Code']
 
@@ -37,6 +42,28 @@ export default function App() {
   const [rps, setRps] = useState(4000)
   const [scenario, setScenario] = useState(null)
   const [importErr, setImportErr] = useState(null)
+  const [multi, setMulti] = useState([])
+  const [search, setSearch] = useState('')
+  const [theme, setTheme] = useState(persist.initialTheme)
+  const [palette, setPalette] = useState(false)
+  const [keysOpen, setKeysOpen] = useState(false)
+  const [tourStep, setTourStep] = useState(null)
+  const [restore, setRestore] = useState(null)
+  const [canvasView, setCanvasView] = useState({ x: 0, y: 0, z: 1 })
+  const [busyExport, setBusyExport] = useState(false)
+  const canvasApi = useRef(null)
+  const searchRef = useRef(null)
+  const toast = useToast()
+
+  // Undo/redo. The stack holds whole IRs: they are small, structurally shared
+  // by React's own copies, and a diff-based stack would be a second source of
+  // truth about what changed.
+  const history = useRef({ past: [], future: [] })
+  const pushHistory = useCallback((prev) => {
+    history.current.past.push(prev)
+    if (history.current.past.length > 60) history.current.past.shift()
+    history.current.future = []
+  }, [])
 
   // ── the twin ──────────────────────────────────────────────────────────────
   const [twin, setTwin] = useState(null)
@@ -74,8 +101,46 @@ export default function App() {
 
   useEffect(() => () => twin?.stop(), [twin])
 
+  useEffect(() => { persist.applyTheme(theme) }, [theme])
+
+  // Offer the last design back rather than restoring it silently — quietly
+  // replacing what someone just opened is how a tool loses their trust.
+  useEffect(() => {
+    const shared = readShareLink()
+    if (shared) {
+      try {
+        const laid = autoLayout(parseIR(shared))
+        setIr(laid); setBaseIR(laid); setComparable(false)
+        toast('Opened the design from this link.')
+        return
+      } catch { /* fall through to the saved design */ }
+    }
+    const saved = persist.loadDesign()
+    if (saved) setRestore(saved)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => persist.saveDesign(ir, { variant, comparable }), 1200)
+    return () => clearTimeout(t)
+  }, [ir, variant, comparable])
+
   // ── IR editing ────────────────────────────────────────────────────────────
-  const update = useCallback((next) => setIr(normalizeIR(next)), [])
+  const update = useCallback((next) => {
+    setIr((prev) => { pushHistory(prev); return normalizeIR(next) })
+  }, [pushHistory])
+
+  const undo = useCallback(() => {
+    const h = history.current
+    if (!h.past.length) return toast('Nothing to undo.')
+    setIr((cur) => { h.future.push(cur); return h.past.pop() })
+    toast('Undone.', { action: () => redo(), actionLabel: 'Redo' })
+  }, [toast]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const redo = useCallback(() => {
+    const h = history.current
+    if (!h.future.length) return toast('Nothing to redo.')
+    setIr((cur) => { h.past.push(cur); return h.future.pop() })
+  }, [toast])
 
   const onNodeChange = useCallback((node) => {
     update({ ...ir, nodes: ir.nodes.map((n) => (n.id === node.id ? node : n)) })
@@ -86,9 +151,20 @@ export default function App() {
   }, [])
 
   const onDelete = useCallback((id) => {
-    setSelected(null)
-    update({ ...ir, nodes: ir.nodes.filter((n) => n.id !== id), edges: ir.edges.filter((e) => e.from !== id && e.to !== id) })
-  }, [ir, update])
+    const ids = id ? [id] : multi.length ? multi : selected ? [selected] : []
+    if (!ids.length) return
+    const gone = ir.nodes.filter((n) => ids.includes(n.id)).map((n) => n.label)
+    setSelected(null); setMulti([])
+    update({ ...ir, nodes: ir.nodes.filter((n) => !ids.includes(n.id)), edges: ir.edges.filter((e) => !ids.includes(e.from) && !ids.includes(e.to)) })
+    toast(`Removed ${gone.join(', ')} from the canvas — the code is untouched until you apply the removal proposal.`,
+      { action: undo, actionLabel: 'Undo' })
+  }, [ir, update, multi, selected, toast, undo])
+
+  const onSelectNode = useCallback((id, opts = {}) => {
+    if (!id) { setSelected(null); setMulti([]); return }
+    if (opts.additive) setMulti((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]))
+    else { setSelected(id); setMulti([]) }
+  }, [])
 
   const onConnect = useCallback((from, to) => {
     if (ir.edges.some((e) => e.from === from && e.to === to)) return
@@ -147,15 +223,153 @@ export default function App() {
 
   const validation = useMemo(() => validateIR(ir, { kinds: kinds() }), [ir])
 
+  // Which components this pull request moved, so the canvas can ring them.
+  const changed = useMemo(() => {
+    if (!comparable || variant !== 'pr') return null
+    try {
+      const d = diffIR(variants.main, ir)
+      return new Set([...d.nodes.changed.map((c) => c.id), ...d.nodes.added.map((n) => n.id)])
+    } catch { return null }
+  }, [comparable, variant, variants, ir])
+
+  const cycleTheme = useCallback(() => {
+    setTheme((t) => {
+      const next = persist.THEMES[(persist.THEMES.indexOf(t) + 1) % persist.THEMES.length]
+      toast(`Theme: ${next}`)
+      return next
+    })
+  }, [toast])
+
+  // Every export reports what actually happened. A save the viewer declined and
+  // a save that silently failed look identical to the user unless the code says
+  // which one it was.
+  const say = useCallback((r, extra = '') => {
+    if (!r) return
+    toast(r.ok ? `${r.message}${extra}` : r.message, { tone: r.ok ? null : r.declined ? null : 'bad' })
+  }, [toast])
+
+  const doExport = useCallback(async (what) => {
+    const svg = canvasApi.current?.svg?.()
+    try {
+      if (what === 'ir') say(await downloadIR(ir), ' Commit it next to your Terraform.')
+      else if (what === 'report' || what === 'copy') {
+        const md = gateMarkdown(gate.result, gate.base, GATE_CONFIG)
+        if (!md) return toast('The gate has not finished sampling yet.')
+        if (what === 'report') say(await saveFile('gate-report.md', md, 'text/markdown'))
+        else {
+          const ok = await copyText(md)
+          toast(ok ? 'Copied the PR comment — the exact markdown CI posts.' : 'This browser would not give me the clipboard.', { tone: ok ? null : 'bad' })
+        }
+      }
+      else if (what === 'svg') say(await exportSVG(svg))
+      else if (what === 'png') { setBusyExport(true); say(await exportPNG(svg)) }
+      else if (what === 'link') {
+        const ok = await copyText(shareLink(ir))
+        toast(ok ? 'Copied a link that carries the whole design.' : 'This browser would not give me the clipboard.', { tone: ok ? 'ok' : 'bad' })
+      }
+    } catch (err) {
+      toast(err.message || 'That export failed.', { tone: 'bad' })
+    } finally { setBusyExport(false) }
+  }, [ir, gate, toast, say])
+
   const switchVariant = useCallback((v) => {
     setVariant(v)
     setIr(variants[v])
     setBaseIR(variants[v])
     setSelected(null)
+    setMulti([])
   }, [variants])
+
+  const startTour = useCallback(() => setTourStep(0), [])
+
+  const tourSteps = useMemo(
+    () => buildTour({ setTab, switchVariant, setSearch, canvasApi }),
+    [switchVariant],
+  )
+
+  // First visit gets the tour offered, not forced. Once dismissed it stays
+  // dismissed — a tour that reappears is an advert.
+  useEffect(() => {
+    if (persist.read('tourSeen')) return
+    const t = setTimeout(() => {
+      toast('First time here? Take the 8-step tour.', {
+        action: startTour, actionLabel: 'Start tour', duration: 14000,
+      })
+      persist.write('tourSeen', true)
+    }, 2200)
+    return () => clearTimeout(t)
+  }, [startTour, toast])
+
+  const commands = useMemo(() => [
+    { id: 'tour', group: 'Learn', title: 'Start the guided tour', keys: 'G', run: startTour },
+    { id: 'keys', group: 'Learn', title: 'Keyboard shortcuts', keys: '?', run: () => setKeysOpen(true) },
+    { id: 'main', group: 'Compare', title: 'Judge main', desc: 'the base branch', keys: 'M', run: () => switchVariant('main') },
+    { id: 'pr', group: 'Compare', title: 'Judge this pull request', keys: 'M', run: () => switchVariant('pr') },
+    ...TABS.map((t, i) => ({ id: `tab-${t}`, group: 'Go to', title: t, keys: String(i + 1), run: () => setTab(t) })),
+    { id: 'twin', group: 'Go to', title: twin ? 'Telemetry is live' : 'Connect telemetry', desc: 'a deterministic demo source', run: connectTwin },
+    { id: 'fit', group: 'Canvas', title: 'Fit to the design', keys: 'F', run: () => canvasApi.current?.fit() },
+    { id: 'zin', group: 'Canvas', title: 'Zoom in', keys: '+', run: () => canvasApi.current?.zoomIn() },
+    { id: 'zout', group: 'Canvas', title: 'Zoom out', keys: '−', run: () => canvasApi.current?.zoomOut() },
+    { id: 'find', group: 'Canvas', title: 'Search components', keys: '/', run: () => searchRef.current?.focus() },
+    { id: 'undo', group: 'Edit', title: 'Undo', keys: '⌘Z', run: undo },
+    { id: 'redo', group: 'Edit', title: 'Redo', keys: '⇧⌘Z', run: redo },
+    { id: 'theme', group: 'Edit', title: 'Cycle theme', desc: 'system, light, dark', keys: 'T', run: cycleTheme },
+    { id: 'x-copy', group: 'Export', title: 'Copy the PR comment', desc: 'exactly what CI posts', run: () => doExport('copy') },
+    { id: 'x-ir', group: 'Export', title: 'Download archsim.lock.json', run: () => doExport('ir') },
+    { id: 'x-report', group: 'Export', title: 'Download the gate report', run: () => doExport('report') },
+    { id: 'x-svg', group: 'Export', title: 'Export the canvas as SVG', run: () => doExport('svg') },
+    { id: 'x-png', group: 'Export', title: 'Export the canvas as PNG', desc: '2× for slides', run: () => doExport('png') },
+    { id: 'x-link', group: 'Export', title: 'Copy a share link', run: () => doExport('link') },
+    ...['lb', 'gateway', 'app', 'micro', 'worker', 'cache', 'sql', 'nosql', 'queue', 'kafka', 'blob', 'search', 'llm']
+      .map((k) => ({ id: `add-${k}`, group: 'Add a component', title: k, run: () => addNode(k) })),
+  ], [startTour, switchVariant, twin, connectTwin, undo, redo, cycleTheme, doExport, addNode])
+
+  // ── keyboard ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e) => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable
+      const mod = e.metaKey || e.ctrlKey
+
+      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return }
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        e.shiftKey ? redo() : undo()
+        return
+      }
+      if (e.key === 'Escape') {
+        // One layer at a time, topmost first.
+        if (palette) return setPalette(false)
+        if (keysOpen) return setKeysOpen(false)
+        if (tourStep !== null) return setTourStep(null)
+        if (search) return setSearch('')
+        return
+      }
+      if (typing) return
+      if (e.key === '?') { e.preventDefault(); setKeysOpen(true) }
+      else if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
+      else if (e.key >= '1' && e.key <= String(TABS.length)) setTab(TABS[Number(e.key) - 1])
+      else if (e.key.toLowerCase() === 'f') canvasApi.current?.fit()
+      else if (e.key === '+' || e.key === '=') canvasApi.current?.zoomIn()
+      else if (e.key === '-') canvasApi.current?.zoomOut()
+      else if (e.key === '0') canvasApi.current?.reset()
+      else if (e.key.toLowerCase() === 'm' && comparable) switchVariant(variant === 'pr' ? 'main' : 'pr')
+      else if (e.key.toLowerCase() === 't') cycleTheme()
+      else if (e.key.toLowerCase() === 'g') startTour()
+      else if ((e.key === 'Backspace' || e.key === 'Delete') && (selected || multi.length)) { e.preventDefault(); onDelete(null) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [palette, keysOpen, tourStep, search, undo, redo, comparable, variant, switchVariant, cycleTheme, startTour, selected, multi, onDelete])
+
+  const viewRect = useMemo(() => {
+    const el = document.querySelector('.stage')
+    if (!el || !canvasView.z) return null
+    return { x: canvasView.x, y: canvasView.y, w: el.clientWidth / canvasView.z, h: el.clientHeight / canvasView.z }
+  }, [canvasView])
 
   return (
     <div className="app">
+      <a className="skip-link" href="#stage">Skip to the canvas</a>
       <header className="top">
         <div className="brand">
           <strong>ArchSim v2</strong>
@@ -177,12 +391,32 @@ export default function App() {
             }} />
           </label>
           <button onClick={connectTwin} className={twin ? 'live' : ''}>{twin ? '● live' : 'Connect telemetry'}</button>
+          <button className="iconbtn" onClick={() => setPalette(true)} title="Command palette — ⌘K" aria-label="Open the command palette">⌘</button>
+          <button className="iconbtn" onClick={cycleTheme} title={`Theme: ${theme}. Press T to cycle.`} aria-label={`Theme: ${theme}. Cycle theme`}>
+            {theme === 'dark' ? '◐' : theme === 'light' ? '☀' : '◑'}
+          </button>
+          <button className="iconbtn" onClick={startTour} title="Take the tour — G" aria-label="Start the guided tour">?</button>
           <span className="hash" title="Content address of the IR. Two runs that print the same hash simulated the same architecture.">{irHash(ir)}</span>
         </div>
       </header>
 
       <Verdict busy={gate.busy} result={gate.result} base={gate.base}
                variant={variant} onVariant={switchVariant} comparable={comparable} />
+
+      {restore && (
+        <div className="restore">
+          <span>You were working on a design {persist.describeAge(restore.savedAt)}.</span>
+          <span className="spacer" />
+          <button className="btn primary" onClick={() => {
+            try {
+              const laid = autoLayout(parseIR(JSON.stringify(restore.ir)))
+              setIr(laid); setBaseIR(laid); setComparable(false); setRestore(null)
+              toast('Restored your design.')
+            } catch { toast('That saved design could not be read.', { tone: 'bad' }); setRestore(null) }
+          }}>Restore it</button>
+          <button className="btn" onClick={() => { persist.clearDesign(); setRestore(null) }}>Discard</button>
+        </div>
+      )}
 
       {importErr && <div className="banner error">Could not read that: {importErr}</div>}
       {validation.errors.length > 0 && <div className="banner error">{validation.errors.length} IR error(s): {validation.errors[0].path} {validation.errors[0].msg}</div>}
@@ -208,9 +442,28 @@ export default function App() {
           )}
         </aside>
 
-        <main className="stage">
-          <Canvas ir={ir} frame={frame} ghosts={ghosts} selected={selected}
-                  onSelect={setSelected} onMove={onMove} onConnect={onConnect} />
+        <main className="stage" id="stage">
+          <Canvas ref={canvasApi} ir={ir} frame={frame} ghosts={ghosts} selected={selected} multi={multi}
+                  search={search} changed={changed}
+                  onSelect={onSelectNode} onMove={onMove} onConnect={onConnect}
+                  onViewChange={setCanvasView} />
+
+          <div className="searchwrap">
+            <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)}
+                   placeholder="Search components  /" aria-label="Search components" />
+            {search && <button className="iconbtn" onClick={() => setSearch('')} aria-label="Clear search">×</button>}
+          </div>
+
+          <Minimap ir={ir} view={viewRect} changed={changed}
+                   onJump={(p) => canvasApi.current?.centerOn({ layout: { x: p.x - 75, y: p.y - 22 } })} />
+
+          <div className="canvaschrome">
+            <button className="iconbtn" onClick={() => canvasApi.current?.zoomOut()} aria-label="Zoom out">−</button>
+            <span className="zoomlevel">{Math.round(canvasView.z * 100)}%</span>
+            <button className="iconbtn" onClick={() => canvasApi.current?.zoomIn()} aria-label="Zoom in">+</button>
+            <button className="iconbtn" onClick={() => canvasApi.current?.fit()} title="Fit to the design — F" aria-label="Fit canvas to the design">⤢</button>
+            <button className="iconbtn" onClick={() => doExport('png')} disabled={busyExport} title="Export as PNG" aria-label="Export the canvas as a PNG">↓</button>
+          </div>
         </main>
 
         <aside className="side">
@@ -229,6 +482,17 @@ export default function App() {
                                      onCalibrate={onCalibrate} incident={incident} scrubIndex={scrubIndex}
                                      onScrub={(i) => { setScrubIndex(i); setFrame(incident?.frames[i] || null) }} />}
         {tab === 'Code' && <CodePanel baseIR={baseIR} ir={ir} sources={sources} />}
+      </div>
+
+      <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
+      <Shortcuts open={keysOpen} onClose={() => setKeysOpen(false)} rows={SHORTCUTS} />
+      {tourStep !== null && (
+        <Tour steps={tourSteps} index={tourStep} onIndex={setTourStep} onClose={() => setTourStep(null)} />
+      )}
+
+      <div aria-live="polite" className="sr-only">
+        {gate.busy ? 'Sampling worlds' : gate.result?.verdict === 'pass' ? 'All gates hold'
+          : gate.result?.verdict === 'risk' ? 'Error budget at risk' : 'Gate violation'}
       </div>
     </div>
   )
