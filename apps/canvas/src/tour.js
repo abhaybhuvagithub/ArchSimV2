@@ -81,6 +81,7 @@ export const SHORTCUTS = [
   { keys: 'G', what: 'Start the tour' },
   { keys: 'C', what: 'Connect every unconnected component' },
   { keys: 'L', what: 'Browse the template library' },
+  { keys: 'A', what: 'Open the Arrange tab' },
   { keys: 'Backspace', what: 'Remove selected component' },
   { keys: '⌥ drag', what: 'Connect two components' },
   { keys: '⌘ click', what: 'Add to selection' },

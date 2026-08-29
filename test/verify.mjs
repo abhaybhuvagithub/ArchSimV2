@@ -53,6 +53,11 @@ import { markdownReport, jsonReport, sarifReport, terminalReport } from '../pack
 import { suggestFor, suggestOrphans, orphans, roleOf, suggestPlacement, ROLES } from '@archsim/core'
 import { TEMPLATES, CATEGORIES, template, buildTemplate, searchTemplates, TEMPLATE_SCENARIOS } from '@archsim/templates'
 
+import {
+  layoutQuality, layoutScore, rankLayouts, LAYOUTS, layered, layeredTidy, force, grid, vertical,
+  align, distribute, snapAll, tighten, ALIGNMENTS,
+} from '../apps/canvas/src/arrange.js'
+
 import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -1734,6 +1739,117 @@ check('every rule in the new tables names a kind the catalog knows', () => {
   if (bad.length) throw new Error(bad.slice(0, 3).join('; '))
   return true
 })
+
+// ── arranging ───────────────────────────────────────────────────────────────
+section('Arrange: layouts that can be scored')
+
+const messy = template('ecommerce-storefront')
+const scattered = normalizeIR({ ...messy, nodes: messy.nodes.map((n) => ({ ...n, layout: { x: 100, y: 100 } })) })
+
+check('quality counts crossings, overlaps, backward edges and length', () => {
+  const q = layoutQuality(messy)
+  return ['crossings', 'overlaps', 'backward', 'length', 'edges'].every((k) => Number.isFinite(q[k]))
+})
+check('components stacked on one point are all overlaps', () =>
+  layoutQuality(scattered).overlaps === (scattered.nodes.length * (scattered.nodes.length - 1)) / 2)
+check('two edges meeting at a shared component are not counted as a crossing', () => {
+  const star = normalizeIR({
+    ...createIR({ name: 'star' }),
+    nodes: [
+      irNode({ id: 'hub', kind: 'app', label: 'hub', layout: { x: 200, y: 200 } }, capacityFor),
+      irNode({ id: 'a', kind: 'sql', label: 'a', layout: { x: 400, y: 100 } }, capacityFor),
+      irNode({ id: 'b', kind: 'sql', label: 'b', layout: { x: 400, y: 300 } }, capacityFor),
+    ],
+    edges: [irEdge({ from: 'hub', to: 'a' }), irEdge({ from: 'hub', to: 'b' })],
+  })
+  return layoutQuality(star).crossings === 0
+})
+check('a deliberate crossing is counted', () => {
+  const x = normalizeIR({
+    ...createIR({ name: 'x' }),
+    nodes: [
+      irNode({ id: 'a', kind: 'app', label: 'a', layout: { x: 0, y: 0 } }, capacityFor),
+      irNode({ id: 'b', kind: 'app', label: 'b', layout: { x: 0, y: 400 } }, capacityFor),
+      irNode({ id: 'c', kind: 'sql', label: 'c', layout: { x: 600, y: 400 } }, capacityFor),
+      irNode({ id: 'd', kind: 'sql', label: 'd', layout: { x: 600, y: 0 } }, capacityFor),
+    ],
+    edges: [irEdge({ from: 'a', to: 'c' }), irEdge({ from: 'b', to: 'd' })],
+  })
+  return layoutQuality(x).crossings === 1
+})
+check('every layout leaves no component sitting on another', () =>
+  LAYOUTS.every((l) => layoutQuality(l.run(scattered)).overlaps === 0))
+check('every layout is deterministic — same design, same positions', () =>
+  LAYOUTS.every((l) => JSON.stringify(l.run(messy).nodes.map((n) => n.layout)) === JSON.stringify(l.run(messy).nodes.map((n) => n.layout))))
+check('a layout moves components and changes nothing else', () => {
+  const strip = (d) => canonical({ ...d, nodes: d.nodes.map((n) => ({ ...n, layout: undefined })) })
+  return strip(layeredTidy(messy)) === strip(messy)
+})
+check('tidying never leaves more crossings than naming', () =>
+  layoutQuality(layeredTidy(messy)).crossings <= layoutQuality(layered(messy)).crossings)
+check('the ranking never crowns a layout worse than what is already there', () => {
+  const bad = []
+  for (const t of TEMPLATES) {
+    const ir = template(t.id)
+    if (rankLayouts(ir)[0].quality.crossings > layoutQuality(ir).crossings) bad.push(t.id)
+  }
+  if (bad.length) throw new Error(`picked worse on ${bad.slice(0, 3).join(', ')}`)
+  return true
+})
+check('the current arrangement is a row, so leaving it alone is an answer', () => {
+  const r = rankLayouts(messy)
+  return r.some((l) => l.id === 'current') && r.length === LAYOUTS.length + 1
+})
+check('rearranging the hundred templates removes crossings far more often than not', () => {
+  let better = 0
+  for (const t of TEMPLATES) {
+    const ir = template(t.id)
+    if (rankLayouts(ir)[0].quality.crossings < layoutQuality(ir).crossings) better++
+  }
+  return better > 20
+})
+check('a cycle does not pile every component into one column', () => {
+  const ring = normalizeIR({
+    ...createIR({ name: 'ring' }),
+    nodes: ['a', 'b', 'c'].map((id) => irNode({ id, kind: 'micro', label: id }, capacityFor)),
+    edges: [irEdge({ from: 'a', to: 'b' }), irEdge({ from: 'b', to: 'c' }), irEdge({ from: 'c', to: 'a' })],
+  })
+  return new Set(layeredTidy(ring).nodes.map((n) => n.layout.x)).size > 1
+})
+check('align moves only the selection, and only on one axis', () => {
+  const ids = messy.nodes.slice(0, 3).map((n) => n.id)
+  const out = align(messy, ids, 'left')
+  const xs = out.nodes.filter((n) => ids.includes(n.id)).map((n) => n.layout.x)
+  const untouched = out.nodes.filter((n) => !ids.includes(n.id))
+  return new Set(xs).size === 1
+    && untouched.every((n) => n.layout.y === messy.nodes.find((m) => m.id === n.id).layout.y)
+})
+check('align needs two components; one is a no-op', () =>
+  align(messy, [messy.nodes[0].id], 'left') === messy)
+check('distribute leaves equal gaps', () => {
+  const ids = messy.nodes.slice(0, 4).map((n) => n.id)
+  const out = distribute(messy, ids, 'x')
+  const xs = out.nodes.filter((n) => ids.includes(n.id)).map((n) => n.layout.x).sort((a, b) => a - b)
+  const gaps = xs.slice(1).map((x, i) => x - xs[i])
+  return Math.max(...gaps) - Math.min(...gaps) <= 8
+})
+check('tighten moves the design to the margin without changing its shape', () => {
+  const far = normalizeIR({ ...messy, nodes: messy.nodes.map((n) => ({ ...n, layout: { x: n.layout.x + 4000, y: n.layout.y + 3000 } })) })
+  const out = tighten(far)
+  return Math.min(...out.nodes.map((n) => n.layout.x)) === 48
+    && layoutQuality(out).crossings === layoutQuality(far).crossings
+})
+check('snapping to the grid leaves every coordinate on it', () => {
+  const off = normalizeIR({ ...messy, nodes: messy.nodes.map((n) => ({ ...n, layout: { x: n.layout.x + 3, y: n.layout.y + 5 } })) })
+  return snapAll(off).nodes.every((n) => n.layout.x % 8 === 0 && n.layout.y % 8 === 0)
+})
+check('every alignment names an axis the layout actually has', () =>
+  ALIGNMENTS.every((a) => a.axis === 'x' || a.axis === 'y'))
+check('the score weights overlaps above crossings above ink', () =>
+  layoutScore({ crossings: 0, overlaps: 1, backward: 0, length: 0 }) >
+  layoutScore({ crossings: 2, overlaps: 0, backward: 0, length: 0 }) &&
+  layoutScore({ crossings: 1, overlaps: 0, backward: 0, length: 0 }) >
+  layoutScore({ crossings: 0, overlaps: 0, backward: 0, length: 5000 }))
 
 // ── wiring rules ────────────────────────────────────────────────────────────
 section('Wiring: what connects to what')

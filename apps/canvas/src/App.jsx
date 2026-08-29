@@ -12,6 +12,7 @@ import { Twin, syntheticSource, reproduceInSimulator } from '@archsim/twin'
 import Canvas, { Minimap } from './Canvas.jsx'
 import Inspector from './Inspector.jsx'
 import { SimulatePanel, GatePanel, DesPanel, TwinPanel, CodePanel } from './Panels.jsx'
+import ArrangePanel from './ArrangePanel.jsx'
 import { autoLayout } from './layout.js'
 import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_CFN, EXAMPLE_SLOS } from './examples.js'
 import Verdict from './Verdict.jsx'
@@ -24,7 +25,7 @@ import { buildTour, SHORTCUTS } from './tour.js'
 import * as persist from './persist.js'
 import { downloadIR, saveFile, gateMarkdown, copyText, exportSVG, exportPNG, shareLink, readShareLink } from './exporters.js'
 
-const TABS = ['Simulate', 'Gate', 'Chaos (DES)', 'Twin', 'Code']
+const TABS = ['Simulate', 'Gate', 'Chaos (DES)', 'Twin', 'Arrange', 'Code']
 
 /** A proposal from the wiring rules, as an IR edge that draws dashed. */
 const asEdge = (e) => ({
@@ -395,6 +396,7 @@ export default function App() {
     { id: 'zout', group: 'Canvas', title: 'Zoom out', keys: '−', run: () => canvasApi.current?.zoomOut() },
     { id: 'find', group: 'Canvas', title: 'Search components', keys: '/', run: () => searchRef.current?.focus() },
     { id: 'templates', group: 'Start', title: 'Browse 100 architecture templates', hint: 'L', keys: 'L', run: () => setGallery(true) },
+    { id: 'arrange', group: 'Edit', title: 'Arrange the canvas', hint: 'Five layouts, scored', keys: 'A', run: () => setTab('Arrange') },
     { id: 'connect', group: 'Edit', title: 'Connect every unconnected component', hint: 'Uses the wiring rules — platform components stay off the request path', keys: 'C', run: connectOrphans },
     { id: 'undo', group: 'Edit', title: 'Undo', keys: '⌘Z', run: undo },
     { id: 'redo', group: 'Edit', title: 'Redo', keys: '⇧⌘Z', run: redo },
@@ -443,6 +445,7 @@ export default function App() {
       else if (e.key.toLowerCase() === 'g') startTour()
       else if (e.key.toLowerCase() === 'c') connectOrphans()
       else if (e.key.toLowerCase() === 'l') setGallery(true)
+      else if (e.key.toLowerCase() === 'a') setTab('Arrange')
       else if ((e.key === 'Backspace' || e.key === 'Delete') && (selected || multi.length)) { e.preventDefault(); onDelete(null) }
     }
     window.addEventListener('keydown', onKey)
@@ -605,6 +608,15 @@ export default function App() {
         <nav className="tabs">
           {TABS.map((t) => <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t}</button>)}
         </nav>
+        {tab === 'Arrange' && (
+          <ArrangePanel
+            ir={ir}
+            selected={selected}
+            multi={multi}
+            onFit={() => canvasApi.current?.fit()}
+            apply={(next, message) => { update(next); toast(message, { action: undo, actionLabel: 'Undo' }) }}
+          />
+        )}
         {tab === 'Simulate' && <SimulatePanel ir={ir} rps={rps} setRps={setRps} scenario={scenario} setScenario={setScenario} />}
         {tab === 'Gate' && <GatePanel gate={gate} config={GATE_CONFIG} variant={variant} comparable={comparable} />}
         {tab === 'Chaos (DES)' && <DesPanel ir={ir} rps={rps} scenario={scenario} />}
