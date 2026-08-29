@@ -179,3 +179,31 @@ Named here so it stays visible rather than getting lost in a list of wins:
   plan fixture is generated. That is the next thing worth measuring.
 - **The twin's synthetic source is a demo.** It exercises the whole path, which is
   why it exists, but no real Prometheus has been pointed at this yet.
+
+---
+
+## Shipped after opening the live URL
+
+The list above was written against a development server. Opening the deployed
+page in a real browser pane found three things no local run had:
+
+- **The page scrolled sideways on a phone.** The top bar refused to wrap and
+  pushed the document 355px past the viewport, putting the right-hand controls
+  out of reach. It now wraps below 720px; below 520px the tagline, the commit
+  hash and the minimap step out, and the tab strip scrolls on its own.
+- **The canvas was blank in a short window.** The deck held a fixed 320px, which
+  in a 480px-tall window left the stage 43 pixels. The deck now takes a share of
+  the height with its old value as a cap.
+- **The viewBox was measured from the wrong element.** It came from the canvas
+  wrapper, but the SVG carries a `min-height`, so on a short stage the wrapper is
+  clipped while the drawing surface stays taller — a small viewBox mapped onto a
+  large element drew everything several times too big and off-screen. It is now
+  measured from the SVG, and a `ResizeObserver` refits when the stage changes
+  size, unless the reader has already panned or zoomed.
+
+Verified at 1500×940, 800×1104, 800×600, 1000×480 and 430×900: every node inside
+the visible stage, no stage scrollbar, no page overflow, no console errors in
+either colour scheme.
+
+The general lesson is worth keeping: none of these three reproduce at a desktop
+window size, and all three were the first thing a visitor would have seen.
