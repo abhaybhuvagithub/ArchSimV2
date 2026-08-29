@@ -182,7 +182,10 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 .warnings p { margin: 7px 0; }
 
 .stage { overflow: auto; background: var(--canvas); }
-.canvas { width: 100%; height: 100%; min-height: 420px; }
+/* The floor keeps the canvas usable in a tall window; the `vh` term keeps it
+   from becoming a scrolling strip in a short one, where a fixed 420px is taller
+   than the room the layout actually has. */
+.canvas { width: 100%; height: 100%; min-height: min(420px, 30vh); }
 
 /* ── nodes ──────────────────────────────────────────────────────────────── */
 .node rect { fill: var(--chip-bg); stroke: var(--border); stroke-width: 1.5; }
@@ -249,7 +252,14 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 .attrs pre { background: var(--bg); padding: 9px; border-radius: 10px; overflow: auto; max-height: 180px; }
 
 /* ── the deck ───────────────────────────────────────────────────────────── */
-.deck { border-top: 1px solid var(--border); background: var(--panel); height: 320px; display: flex; flex-direction: column; }
+/* The deck was a fixed 320px, which in a short window left the canvas a 43px
+   scrolling strip — the diagram was there, just nowhere anyone could see it.
+   It now takes a share of the height with a floor and its old value as a cap. */
+.deck {
+  border-top: 1px solid var(--border); background: var(--panel);
+  height: clamp(180px, 36vh, 320px); flex: none;
+  display: flex; flex-direction: column;
+}
 .tabs { display: flex; gap: 6px; padding: 10px 14px 0; }
 .tabs button {
   background: var(--panel2); border: 1px solid var(--border); color: var(--muted);

@@ -28,6 +28,9 @@ const Canvas = forwardRef(function Canvas({
   const [pan, setPan] = useState(null)
   const [linkFrom, setLinkFrom] = useState(null)
   const [view, setView] = useState({ x: 0, y: 0, z: 1 })
+  // True once the reader has moved the view themselves, after which an
+  // automatic refit would be the tool taking the wheel back.
+  const touched = useRef(false)
   const pos = (n) => n.layout || { x: 40, y: 40 }
 
   const content = useMemo(() => {
@@ -41,8 +44,13 @@ const Canvas = forwardRef(function Canvas({
     }
   }, [ir.nodes])
 
+  // Measure the SVG, not its wrapper. The element carries a `min-height`, so on
+  // a short viewport the wrapper is clipped to what fits while the drawing
+  // surface stays taller — measuring the wrapper then maps a small viewBox onto
+  // a large element and the diagram is drawn several times too big, entirely
+  // outside the strip the reader can see.
   const size = () => {
-    const r = wrapRef.current?.getBoundingClientRect()
+    const r = svgRef.current?.getBoundingClientRect() || wrapRef.current?.getBoundingClientRect()
     return { w: r?.width || 900, h: r?.height || 520 }
   }
 
@@ -60,10 +68,12 @@ const Canvas = forwardRef(function Canvas({
     const cw = content.maxX - content.minX
     const ch = content.maxY - content.minY
     const z = Math.max(MIN_Z, Math.min(1.4, Math.min(w / cw, h / ch)))
+    touched.current = false
     setView({ z, x: content.minX - (w / z - cw) / 2, y: content.minY - (h / z - ch) / 2 })
   }, [content])
 
   const zoomBy = useCallback((factor, anchor = null) => {
+    touched.current = true
     setView((v) => {
       const z = Math.max(MIN_Z, Math.min(MAX_Z, v.z * factor))
       if (z === v.z) return v
@@ -79,10 +89,11 @@ const Canvas = forwardRef(function Canvas({
     fit,
     zoomIn: () => zoomBy(1.25),
     zoomOut: () => zoomBy(1 / 1.25),
-    reset: () => setView({ x: content.minX, y: content.minY, z: 1 }),
+    reset: () => { touched.current = true; setView({ x: content.minX, y: content.minY, z: 1 }) },
     svg: () => svgRef.current,
     view,
     centerOn: (node) => {
+      touched.current = true
       const p = pos(node)
       const { w, h } = size()
       setView((v) => ({ ...v, x: p.x + W / 2 - w / v.z / 2, y: p.y + H / 2 - h / v.z / 2 }))
@@ -91,6 +102,25 @@ const Canvas = forwardRef(function Canvas({
 
   useEffect(() => { const t = setTimeout(fit, 60); return () => clearTimeout(t) }, [ir.meta?.name]) // eslint-disable-line
   useEffect(() => { onViewChange?.(view) }, [view, onViewChange])
+
+  // The viewBox is derived from a measurement taken during render, so nothing
+  // re-derives it when the element changes size on its own: a window resize, a
+  // phone rotating, a banner appearing above the stage. Watch the element.
+  // Refit only while the view is still the one we chose — once someone has
+  // panned or zoomed, moving the diagram under them would be rude.
+  const [, bump] = useState(0)
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let first = true
+    const ro = new ResizeObserver(() => {
+      if (first) { first = false; return }
+      if (touched.current) bump((n) => n + 1)
+      else fit()
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [fit])
 
   // Non-passive so the page does not scroll while the canvas zooms.
   useEffect(() => {
@@ -142,6 +172,9 @@ const Canvas = forwardRef(function Canvas({
       const rect = svgRef.current.getBoundingClientRect()
       const dx = (e.clientX - rect.left - pan.sx) / view.z
       const dy = (e.clientY - rect.top - pan.sy) / view.z
+      // A click that deselects is not a pan; only actual movement counts as the
+      // reader taking over the view.
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) touched.current = true
       setView((v) => ({ ...v, x: pan.ox - dx, y: pan.oy - dy }))
     }
   }
