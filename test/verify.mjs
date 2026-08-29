@@ -30,6 +30,11 @@ import {
   coverage, findRule, isStructural, isConnector, isNoise, isSubResource, labelFromAddress,
   inferFromImage, parseInstanceClass,
   sizeFromInstanceClass, TIER_RANK, orient, callSemanticsFor,
+  cfnToIR, cdkOutToIR, parseCfnTemplate, resolveValue, parameterDefaults, evaluateConditions,
+  pulumiToIR, parseUrn, typeToTerraform,
+  helmToIR, renderChart, substitute, looksLikeChart,
+  compareToDeployed, driftMarkdown, SIMULATION_FIELDS,
+  pullRequestPayload, unifiedDiff, providerOf,
 } from '@archsim/iac'
 import {
   runDES, TDigest, EventHeap, checkErlangC, erlangC, mmcSojourn, mmcFixture, chainFixture,
@@ -1399,6 +1404,336 @@ function hasLiteralCount(text, node) {
   }
   return false
 }
+
+// ── CloudFormation, CDK and SAM ─────────────────────────────────────────────
+section('CloudFormation: the path CDK actually takes')
+
+const CFN_STACK = {
+  AWSTemplateFormatVersion: '2010-09-09',
+  Parameters: { Count: { Type: 'Number', Default: 4 }, Env: { Type: 'String', Default: 'prod' }, NoDefault: { Type: 'String' } },
+  Mappings: { Sizing: { prod: { Db: 'db.r6g.2xlarge' }, dev: { Db: 'db.t3.micro' } } },
+  Conditions: { IsProd: { 'Fn::Equals': [{ Ref: 'Env' }, 'prod'] }, Unknowable: { 'Fn::Equals': [{ Ref: 'NoDefault' }, 'x'] } },
+  Resources: {
+    Vpc: { Type: 'AWS::EC2::VPC', Properties: { CidrBlock: '10.0.0.0/16' } },
+    Alb: { Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer', Properties: { Type: 'application', Subnets: [{ Ref: 'Vpc' }] } },
+    Tg: { Type: 'AWS::ElasticLoadBalancingV2::TargetGroup', Properties: { VpcId: { Ref: 'Vpc' } } },
+    Listener: { Type: 'AWS::ElasticLoadBalancingV2::Listener', Properties: { LoadBalancerArn: { Ref: 'Alb' }, DefaultActions: [{ TargetGroupArn: { Ref: 'Tg' } }] } },
+    CheckoutServiceB1CE1F2A: { Type: 'AWS::ECS::Service', Properties: { DesiredCount: { Ref: 'Count' }, LoadBalancers: [{ TargetGroupArn: { Ref: 'Tg' } }] } },
+    OrdersDb: { Type: 'AWS::RDS::DBInstance', Properties: { Engine: 'postgres', DBInstanceClass: { 'Fn::FindInMap': ['Sizing', { Ref: 'Env' }, 'Db'] }, MultiAZ: { 'Fn::If': ['IsProd', true, false] } }, DependsOn: ['CheckoutServiceB1CE1F2A'] },
+    StagingOnly: { Type: 'AWS::S3::Bucket', Condition: 'NotProd', Properties: {} },
+    Role: { Type: 'AWS::IAM::Role', Properties: {} },
+    Meta: { Type: 'AWS::CDK::Metadata', Properties: {} },
+  },
+}
+CFN_STACK.Conditions.NotProd = { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'Env' }, 'prod'] }] }
+
+const cfnText = JSON.stringify(CFN_STACK)
+const cfn = cfnToIR([{ file: 'Checkout.template.json', text: cfnText }])
+const cfnNode = (label) => cfn.ir.nodes.find((n) => n.label === label)
+
+check('a CloudFormation type resolves to the cfn provider, not to Kubernetes', () =>
+  providerOf('AWS::Lambda::Function') === 'cfn' && providerOf('apps/v1:Deployment') === 'k8s')
+check('a template becomes components', () =>
+  // three mapped resources, plus the client the ingest attaches to the front
+  cfn.report.mapped === 3 && cfn.ir.nodes.length === 4)
+check('a parameter default supplies a replica count', () => cfnNode('checkout-service').capacity.replicas === 4)
+check('Fn::FindInMap through a Ref sizes the database', () =>
+  cfnNode('orders-db').capacity.capPerReplica === sizeFromInstanceClass(capacityFor('sql'), 'db.r6g.2xlarge').capPerReplica)
+check('Fn::If on a decidable condition is decided', () => cfnNode('orders-db').capacity.replicas === 2)
+check('a resource whose condition is false is not deployed', () =>
+  !cfn.ir.nodes.some((n) => n.label === 'staging-only'))
+check('IAM and CDK metadata are structural, not components', () =>
+  cfn.report.resources.filter((r) => r.disposition === 'structural').length >= 2 &&
+  !cfn.ir.nodes.some((n) => /role|meta/.test(n.label)))
+check('a listener and target group are hopped through, not drawn', () => {
+  const l = (id) => cfn.ir.nodes.find((n) => n.id === id)?.label
+  return cfn.ir.edges.some((e) => l(e.from) === 'alb' && l(e.to) === 'checkout-service')
+})
+check('a CDK logical id becomes a readable label', () => labelFromLogicalIdIsReadable())
+function labelFromLogicalIdIsReadable() { return !!cfnNode('checkout-service') }
+check('an unresolvable condition is reported, not silently assumed', () => {
+  const t = { Resources: { B: { Type: 'AWS::S3::Bucket', Properties: { BucketName: { 'Fn::If': ['Unknowable', 'a', 'b'] } } } }, Conditions: CFN_STACK.Conditions, Parameters: CFN_STACK.Parameters }
+  const r = cfnToIR([{ file: 'x.json', text: JSON.stringify(t) }])
+  return r.report.warnings.some((w) => /could not be evaluated/.test(w.msg))
+})
+check('Fn::ImportValue says which stack is missing rather than inventing a value', () => {
+  const t = { Resources: { S: { Type: 'AWS::ECS::Service', Properties: { DesiredCount: { 'Fn::ImportValue': 'other-stack-count' } } } } }
+  const r = cfnToIR([{ file: 'x.json', text: JSON.stringify(t) }])
+  return r.report.warnings.some((w) => /crosses a stack boundary/.test(w.msg))
+})
+check('the whole template is kept verbatim in passthrough', () =>
+  cfn.ir.passthrough.length === 1 && cfn.ir.passthrough[0].text === cfnText)
+check('a template simulates', () => Number.isFinite(simulate(cfn.ir, 2000).p99))
+
+const cfnYaml = `AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+  Fn:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          BUCKET: !Ref Bucket
+          ARN: !GetAtt Bucket.Arn
+`
+check('YAML short-form intrinsics normalise to the long form', () => {
+  const { template } = parseCfnTemplate(cfnYaml, 'x.yaml')
+  const v = template.Resources.Fn.Properties.Environment.Variables
+  return v.BUCKET.Ref === 'Bucket' && v.ARN['Fn::GetAtt'][0] === 'Bucket'
+})
+check('a YAML template ingests and its references become an edge', () => {
+  const r = cfnToIR([{ file: 'x.yaml', text: cfnYaml }])
+  return r.ir.nodes.length >= 2 && r.ir.edges.length >= 1
+})
+check('parameter defaults are the only parameter values read', () => {
+  const d = parameterDefaults(CFN_STACK)
+  return d.Count === 4 && d.Env === 'prod' && !('NoDefault' in d)
+})
+check('conditions that cannot be decided stay undecided', () => {
+  const c = evaluateConditions(CFN_STACK, parameterDefaults(CFN_STACK))
+  return c.IsProd === true && c.NotProd === false && c.Unknowable === undefined
+})
+check('cdk.out is read through its manifest', () => {
+  const r = cdkOutToIR([
+    { path: 'cdk.out/manifest.json', text: JSON.stringify({ artifacts: { CheckoutStack: { type: 'aws:cloudformation:stack', properties: { templateFile: 'CheckoutStack.template.json' } } } }) },
+    { path: 'cdk.out/CheckoutStack.template.json', text: cfnText },
+  ])
+  return r.report.stacks.length === 1 && r.report.stacks[0].stack === 'CheckoutStack' && r.ir.nodes.length === cfn.ir.nodes.length
+})
+check('cdk.out without a manifest still reads, and says the ordering is unknown', () => {
+  const r = cdkOutToIR([{ path: 'cdk.out/A.template.json', text: cfnText }])
+  return r.ir.nodes.length > 0 && r.report.warnings.some((w) => /no manifest\.json/.test(w.msg))
+})
+check('the same template twice produces the same irHash', () =>
+  irHash(cfnToIR([{ file: 'a.json', text: cfnText }]).ir) === irHash(cfnToIR([{ file: 'a.json', text: cfnText }]).ir))
+
+// ── Pulumi ──────────────────────────────────────────────────────────────────
+section('Pulumi: state and preview')
+
+const U = (t, n) => `urn:pulumi:prod::shop::${t}::${n}`
+const PULUMI_STATE = { deployment: { resources: [
+  { urn: U('pulumi:pulumi:Stack', 'shop-prod'), type: 'pulumi:pulumi:Stack' },
+  { urn: U('aws:ec2/vpc:Vpc', 'main'), inputs: {} },
+  { urn: U('aws:elasticloadbalancingv2/loadBalancer:LoadBalancer', 'edge'), inputs: {}, dependencies: [U('aws:ec2/vpc:Vpc', 'main')] },
+  { urn: U('aws:elasticloadbalancingv2/targetGroup:TargetGroup', 'tg'), inputs: {}, dependencies: [U('aws:elasticloadbalancingv2/loadBalancer:LoadBalancer', 'edge')] },
+  { urn: U('aws:ecs/service:Service', 'checkout'), inputs: { desired_count: 6 }, dependencies: [U('aws:elasticloadbalancingv2/targetGroup:TargetGroup', 'tg')] },
+  { urn: U('aws:rds/instance:Instance', 'orders'), inputs: { instance_class: 'db.r6g.xlarge', multi_az: true }, dependencies: [U('aws:ecs/service:Service', 'checkout')] },
+] } }
+const pulumi = pulumiToIR(PULUMI_STATE)
+
+check('a URN parses into stack, project, type and name', () => {
+  const p = parseUrn(U('aws:ecs/service:Service', 'checkout'))
+  return p.stack === 'prod' && p.project === 'shop' && p.name === 'checkout'
+})
+check('a Pulumi type maps onto the Terraform rule already in the registry', () =>
+  typeToTerraform('aws:ecs/service:Service').terraformType === 'aws_ecs_service' &&
+  typeToTerraform('aws:elasticloadbalancingv2/loadBalancer:LoadBalancer').terraformType === 'aws_lb' &&
+  typeToTerraform('aws:elasticache/replicationGroup:ReplicationGroup').terraformType === 'aws_elasticache_replication_group')
+check('a stack export becomes components with their real replica counts', () =>
+  pulumi.report.source === 'state' && pulumi.ir.nodes.find((n) => n.label === 'checkout')?.capacity.replicas === 6)
+check('multi_az on a Pulumi RDS instance is two replicas, same as in Terraform', () =>
+  pulumi.ir.nodes.find((n) => n.label === 'orders')?.capacity.replicas === 2)
+check("Pulumi's own stack and provider resources are not components", () =>
+  !pulumi.ir.nodes.some((n) => /shop-prod/.test(n.label)))
+check('the dependency graph becomes edges, hopping the target group', () => {
+  const l = (id) => pulumi.ir.nodes.find((n) => n.id === id)?.label
+  return pulumi.ir.edges.some((e) => l(e.from) === 'edge' && l(e.to) === 'checkout')
+})
+check('a preview is read too, and says it is a preview', () => {
+  const p = pulumiToIR({ steps: [
+    { op: 'create', urn: U('aws:ecs/service:Service', 'checkout'), newState: { urn: U('aws:ecs/service:Service', 'checkout'), inputs: { desired_count: 3 } } },
+    { op: 'delete', urn: U('aws:sqs/queue:Queue', 'old'), oldState: { urn: U('aws:sqs/queue:Queue', 'old'), inputs: {} } },
+  ] })
+  return p.report.source === 'preview' && p.ir.nodes.some((n) => n.label === 'checkout') && !p.ir.nodes.some((n) => n.label === 'old')
+})
+check('a Pulumi stack simulates', () => Number.isFinite(simulate(pulumi.ir, 1000).p99))
+
+// ── Helm ────────────────────────────────────────────────────────────────────
+section('Helm: render what is safe, refuse the rest')
+
+const CHART = [
+  { path: 'checkout/Chart.yaml', text: 'name: checkout\nversion: 1.4.2\nappVersion: "2.0"\n' },
+  { path: 'checkout/values.yaml', text: 'replicaCount: 5\nimage:\n  repository: nginx\ncache:\n  replicas: 3\n' },
+  { path: 'checkout/templates/deployment.yaml', text: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .Chart.Name }}-api\nspec:\n  replicas: {{ .Values.replicaCount }}\n  template:\n    spec:\n      containers:\n        - name: api\n          image: {{ .Values.image.repository }}:{{ .Values.image.tag | default "latest" }}\n' },
+  { path: 'checkout/templates/ingress.yaml', text: '{{- if .Values.ingress.enabled }}\napiVersion: networking.k8s.io/v1\nkind: Ingress\n{{- end }}\n' },
+  { path: 'checkout/templates/_helpers.tpl', text: '{{- define "x" -}}y{{- end -}}' },
+]
+
+check('a chart directory is recognised', () => looksLikeChart(CHART) && !looksLikeChart([{ path: 'a/b.yaml', text: '' }]))
+check('plain value substitution renders exactly', () => {
+  const out = substitute('replicas: {{ .Values.n }}', { values: { n: 7 }, chart: {}, release: {} })
+  return out === 'replicas: 7'
+})
+check('.Chart.Name reads the chart file\'s lowercase key', () => {
+  const r = renderChart(CHART)
+  return /name: checkout-api/.test(r.rendered.find((f) => /deployment/.test(f.path)).text)
+})
+check('a default pipeline supplies a missing value', () =>
+  substitute('{{ .Values.tag | default "latest" }}', { values: {}, chart: {}, release: {} }) === 'latest')
+check('an unknown pipeline is left visible rather than guessed', () =>
+  substitute('{{ .Values.x | b64enc }}', { values: { x: 'a' }, chart: {}, release: {} }) === '{{ .Values.x | b64enc }}')
+check('control flow is refused by name and line, never half-rendered', () => {
+  const r = renderChart(CHART)
+  return r.refused.length === 1 && r.refused[0].what === 'if' && r.refused[0].line === 1
+})
+check('a refusal names the file and points at helm template', () => {
+  const { report } = helmToIR(CHART)
+  return report.warnings.some((w) => /ingress\.yaml/.test(w.address) && /helm template/.test(w.msg))
+})
+check('the renderable half of a chart still becomes an architecture', () => {
+  const { ir } = helmToIR(CHART)
+  return ir.nodes.find((n) => n.label === 'checkout-api')?.capacity.replicas === 5
+})
+check('a values override wins over the chart default, exactly as -f does', () => {
+  const { ir } = helmToIR(CHART, { values: { replicaCount: 9 } })
+  return ir.nodes.find((n) => n.label === 'checkout-api')?.capacity.replicas === 9
+})
+check('_helpers.tpl renders nothing', () => renderChart(CHART).rendered.every((f) => !/_helpers/.test(f.path)))
+
+// ── drift ───────────────────────────────────────────────────────────────────
+section('Drift: the design against the estate')
+
+const driftStack = (desired, dbClass, extra = {}) => JSON.stringify({ Resources: {
+  Alb: { Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer', Properties: {} },
+  Checkout: { Type: 'AWS::ECS::Service', Properties: { DesiredCount: desired }, DependsOn: ['Alb'] },
+  OrdersDb: { Type: 'AWS::RDS::DBInstance', Properties: { DBInstanceClass: dbClass, Engine: 'postgres' }, DependsOn: ['Checkout'] },
+  ...extra,
+} })
+const designIR = cfnToIR([{ file: 'design.json', text: driftStack(6, 'db.r6g.2xlarge') }]).ir
+const liveIR = cfnToIR([{ file: 'live.json', text: driftStack(2, 'db.r6g.2xlarge', { LegacyBucket: { Type: 'AWS::S3::Bucket', Properties: {} } }) }]).ir
+
+check('a design compared to itself is clean', () => compareToDeployed(designIR, designIR).clean)
+check('a replica count that differs is drift', () => {
+  const d = compareToDeployed(designIR, liveIR)
+  return d.diverged.some((x) => x.label === 'checkout' && x.fields.some((f) => f.field === 'replicas' && f.design === 6 && f.live === 2))
+})
+check('a resource nobody designed is reported as unmanaged', () => {
+  const d = compareToDeployed(designIR, liveIR)
+  return d.unmanaged.length === 1 && d.unmanaged[0].label === 'legacy-bucket'
+})
+check('a designed component that is not deployed is reported as undeployed', () => {
+  const d = compareToDeployed(liveIR, designIR)
+  return d.undeployed.some((u) => u.label === 'legacy-bucket')
+})
+check('only fields the simulator reads count as drift', () => {
+  // Same design, one extra tag. Nothing the engine reads changed.
+  const tagged = normalizeIR({ ...designIR, nodes: designIR.nodes.map((n) => ({ ...n, attrs: { ...n.attrs, owner: 'platform' } })) })
+  return compareToDeployed(designIR, tagged).clean
+})
+check('every simulation field named is one the IR actually carries', () => {
+  // A cache is the only kind that carries `cacheHit`, so the check needs a
+  // design containing one — a field list that names something the IR never has
+  // is a drift report that can never fire.
+  const withCache = cfnToIR([{ file: 'c.json', text: JSON.stringify({ Resources: {
+    Svc: { Type: 'AWS::ECS::Service', Properties: { DesiredCount: 2 } },
+    Cache: { Type: 'AWS::ElastiCache::ReplicationGroup', Properties: { NumCacheClusters: 2 } },
+  } }) }]).ir
+  const missing = SIMULATION_FIELDS.filter((f) => !withCache.nodes.some((n) =>
+    f.path.reduce((o, k) => (o == null ? undefined : o[k]), n) !== undefined))
+  if (missing.length) throw new Error(`no node carries ${missing.map((m) => m.path.join('.')).join(', ')}`)
+  return true
+})
+check('the drift report states what each difference changes', () => {
+  const md = driftMarkdown(compareToDeployed(designIR, liveIR))
+  return /capacity and availability/.test(md) && /Unmanaged/.test(md)
+})
+check('a clean report says so rather than printing empty tables', () => {
+  const md = driftMarkdown(compareToDeployed(designIR, designIR))
+  return /No drift/.test(md) && !/### Diverged/.test(md)
+})
+
+// ── the pull request ────────────────────────────────────────────────────────
+section('Pull requests: packaged, not opened')
+
+const PR_TF = `resource "aws_lb" "edge" {
+  name = "edge"
+}
+
+resource "aws_ecs_service" "checkout" {
+  name          = "checkout"
+  desired_count = 6
+  cluster       = aws_ecs_cluster.main.id
+}
+`
+const prBase = hclToIR([{ path: 'main.tf', text: PR_TF }], { managed: 'partial' }).ir
+const prTarget = normalizeIR({ ...prBase, nodes: prBase.nodes.map((n) => (n.label === 'checkout' ? { ...n, capacity: { ...n.capacity, replicas: 3 } } : n)) })
+const prEmit = emitChanges(prBase, prTarget, [{ path: 'main.tf', text: PR_TF }])
+const pr = pullRequestPayload({ emit: prEmit, sources: { 'main.tf': PR_TF }, ir: prTarget, base: prBase })
+
+check('the title states the change rather than describing the tool', () => /desired_count 6 → 3/.test(pr.title))
+check('the branch name is stable for the same design', () =>
+  pr.branch === pullRequestPayload({ emit: prEmit, sources: { 'main.tf': PR_TF }, ir: prTarget, base: prBase }).branch)
+check('a different design gets a different branch', () => {
+  const other = normalizeIR({ ...prBase, nodes: prBase.nodes.map((n) => (n.label === 'checkout' ? { ...n, capacity: { ...n.capacity, replicas: 4 } } : n)) })
+  return pullRequestPayload({ emit: emitChanges(prBase, other, [{ path: 'main.tf', text: PR_TF }]), sources: { 'main.tf': PR_TF }, ir: other, base: prBase }).branch !== pr.branch
+})
+check('the diff is a real unified diff of the real edit', () =>
+  /^--- a\/main\.tf$/m.test(pr.diff) && /^-  desired_count = 6$/m.test(pr.diff) && /^\+  desired_count = 3$/m.test(pr.diff))
+check('the diff shows only the changed lines and their context', () =>
+  pr.diff.split('\n').filter((l) => l.startsWith('-') && !l.startsWith('---')).length === 1)
+check('the commit message carries the IR hash', () => pr.commitMessage.includes(irHash(prTarget)))
+check('an unchanged design produces an empty diff', () => unifiedDiff('a.tf', PR_TF, PR_TF) === '')
+check('the payload never contains a command ArchSim ran itself', () =>
+  /gh pr create/.test(pr.script) && !/token/i.test(pr.script))
+check('a removal is labelled for a human rather than patched', () => {
+  const shrunk = normalizeIR({ ...prBase, nodes: prBase.nodes.filter((n) => n.label !== 'checkout') })
+  const p = pullRequestPayload({ emit: emitChanges(prBase, shrunk, [{ path: 'main.tf', text: PR_TF }]), sources: { 'main.tf': PR_TF }, ir: shrunk, base: prBase })
+  return p.labels.includes('needs-human-review') && /never emits a destroy/.test(p.body)
+})
+check('a gate result, when there is one, is stated in the body', () => {
+  const gate = { evaluation: { results: [{ slo: { id: 'latency' }, verdict: 'fail', holdPct: 12 }] } }
+  const p = pullRequestPayload({ emit: prEmit, sources: { 'main.tf': PR_TF }, ir: prTarget, base: prBase, gate })
+  return /1 SLO violation/.test(p.body) && p.labels.includes('slo-violation')
+})
+
+// ── provider breadth ────────────────────────────────────────────────────────
+section('Providers: six tables, honestly counted')
+
+check('coverage reports every provider table', () => {
+  const c = coverage()
+  return ['aws', 'gcp', 'azure', 'k8s', 'oci', 'cfn'].every((p) => c.byProvider[p] > 0)
+})
+check('an Oracle Cloud instance pool states its own replica count', () => {
+  const r = findRule('oci', 'oci_core_instance_pool', {})
+  return r?.capacity({ size: 5 }, { seed: capacityFor }).replicas === 5
+})
+check('an Oracle load balancer shape becomes a capacity figure', () => {
+  const r = findRule('oci', 'oci_load_balancer_load_balancer', {})
+  const cap = r.capacity({ shape: '400Mbps' }, { seed: capacityFor })
+  return cap.capPerReplica === 50000
+})
+check('Oracle networking is structural, not components', () =>
+  isStructural('oci_core_vcn') && isStructural('oci_core_security_list') && !isStructural('oci_core_instance'))
+// A rule that maps to a kind the catalog has never heard of produces a node the
+// simulator prices as `custom` while the table claims otherwise. Every rule in
+// the two new tables is checked; the four older tables are covered by the
+// corpus, which ingests real files through them.
+const NEW_TABLE_TYPES = {
+  oci: ['oci_core_instance', 'oci_core_instance_pool', 'oci_load_balancer_load_balancer',
+    'oci_database_autonomous_database', 'oci_nosql_table', 'oci_streaming_stream',
+    'oci_objectstorage_bucket', 'oci_functions_function', 'oci_cache_redis_cluster',
+    'oci_opensearch_opensearch_cluster', 'oci_containerengine_node_pool', 'oci_queue_queue',
+    'oci_vault_secret', 'oci_generative_ai_dedicated_ai_cluster'],
+  cfn: ['AWS::ECS::Service', 'AWS::RDS::DBInstance', 'AWS::Lambda::Function', 'AWS::SQS::Queue',
+    'AWS::DynamoDB::Table', 'AWS::S3::Bucket', 'AWS::ElastiCache::ReplicationGroup',
+    'AWS::CloudFront::Distribution', 'AWS::Kinesis::Stream', 'AWS::StepFunctions::StateMachine',
+    'AWS::AutoScaling::AutoScalingGroup', 'AWS::OpenSearchService::Domain', 'AWS::MSK::Cluster',
+    'AWS::Cognito::UserPool', 'AWS::Redshift::Cluster'],
+}
+
+check('every rule in the new tables names a kind the catalog knows', () => {
+  const bad = []
+  for (const [provider, types] of Object.entries(NEW_TABLE_TYPES)) {
+    for (const t of types) {
+      const rule = findRule(provider, t, {})
+      if (!rule) { bad.push(`${provider}:${t} has no rule`); continue }
+      if (rule.kind && !CATALOG[rule.kind]) bad.push(`${provider}:${t} → unknown kind '${rule.kind}'`)
+    }
+  }
+  if (bad.length) throw new Error(bad.slice(0, 3).join('; '))
+  return true
+})
 
 // ── wiring rules ────────────────────────────────────────────────────────────
 section('Wiring: what connects to what')

@@ -9,7 +9,7 @@
 
 import { parseIR, serializeIR, validateIR, irHash, normalizeIR, fromV1, threeWayMerge, diffIR } from '@archsim/ir'
 import { kinds, capacityFor, simulate, capacityReport, costReport, runMonteCarlo, evaluateSLOs, compileFaults, FAULTS } from '@archsim/core'
-import { planJsonToIR, k8sToIR, k8sObjects, hclToIR, parseYamlDocs, emitChanges, applyEdits, coverage } from '@archsim/iac'
+import { planJsonToIR, k8sToIR, k8sObjects, hclToIR, parseYamlDocs, emitChanges, applyEdits, coverage, cfnToIR, cdkOutToIR, pulumiToIR, helmToIR, looksLikeChart, compareToDeployed, driftMarkdown, pullRequestPayload } from '@archsim/iac'
 import { runDES, escalate, analyzeStorm, analyzeStarvation, analyzeBreakers, checkErlangC } from '@archsim/des'
 import { TEMPLATES, CATEGORIES, template as templateIR } from '@archsim/templates'
 import { parseConfig, EXAMPLE_CONFIG, DEFAULT_CONFIG_PATH, DEFAULT_SCENARIOS } from './config.js'
@@ -40,6 +40,7 @@ export async function main(argv, env) {
     case 'replay': return cmdReplay(flags, env, write, warn)
     case 'migrate': return cmdMigrate(flags, env, write, warn)
     case 'init': return cmdInit(flags, env, write, warn)
+    case 'drift': return cmdDrift(flags, env, write, warn)
     case 'templates': return cmdTemplates(flags, env, write, warn)
     case 'faults': return cmdFaults(write)
     case 'coverage': return cmdCoverage(write)
@@ -75,21 +76,54 @@ function loadIRFromFlags(flags, env, warn) {
     const sources = files.map((f) => ({ path: f, text: fs.readFileSync(f, 'utf8') }))
     return { ...hclToIR(sources, { name: flags.name, managed: flags.managed || 'partial' }), sources }
   }
-  throw new Error('give me something to read: --plan tfplan.json, --k8s manifests/, --hcl infra/ or --ir archsim.lock.json')
+  if (flags.cfn) {
+    const files = expand(flags.cfn, env, /\.(json|ya?ml|template)$/)
+    const inputs = files.map((f) => ({ file: f, text: fs.readFileSync(f, 'utf8') }))
+    return { ...cfnToIR(inputs, { name: flags.name, managed: flags.managed }), sources: inputs.map((i) => ({ path: i.file, text: i.text })) }
+  }
+  if (flags.cdk) {
+    // A CDK app is read from what `cdk synth` wrote, never from the TypeScript.
+    // The synthesizer has already resolved constructs, aspects and logical ids;
+    // an AST walk would re-derive worse versions of facts the output states.
+    const files = expand(flags.cdk, env, /\.(json)$/)
+    const inputs = files.map((f) => ({ path: f, text: fs.readFileSync(f, 'utf8') }))
+    return { ...cdkOutToIR(inputs, { name: flags.name, managed: flags.managed }), sources: inputs }
+  }
+  if (flags.pulumi) {
+    const doc = JSON.parse(fs.readFileSync(flags.pulumi, 'utf8'))
+    return { ...pulumiToIR(doc, { file: flags.pulumi, name: flags.name, managed: flags.managed }), sources: [] }
+  }
+  if (flags.helm) {
+    const files = expand(flags.helm, env, /\.(ya?ml|tpl)$/, true)
+    const inputs = files.map((f) => ({ path: f, text: fs.readFileSync(f, 'utf8') }))
+    if (!looksLikeChart(inputs)) warn(`no Chart.yaml under '${flags.helm}' — reading these as plain manifests instead`)
+    const values = flags.values ? parseYamlDocs(fs.readFileSync(flags.values, 'utf8'), flags.values).find((d) => d.value && typeof d.value === 'object')?.value : undefined
+    return { ...helmToIR(inputs, { name: flags.name, managed: flags.managed, values, releaseName: flags.release }), sources: inputs }
+  }
+  throw new Error('give me something to read: --plan tfplan.json, --k8s manifests/, --hcl infra/, --cfn template.yaml, --cdk cdk.out/, --pulumi stack.json, --helm chart/ or --ir archsim.lock.json')
 }
 
-function expand(spec, env) {
+/**
+ * A path spec — a file, a directory, or a comma-separated list of either — to a
+ * sorted file list. `recurse` exists for Helm charts, whose templates live one
+ * directory down from the Chart.yaml that identifies them.
+ */
+function expand(spec, env, pattern = /\.(tf|ya?ml|json)$/, recurse = false) {
   const { fs, path } = env
   const out = []
+  const walk = (dir, depth) => {
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry)
+      if (recurse && depth < 4 && fs.statSync(full).isDirectory()) { walk(full, depth + 1); continue }
+      if (pattern.test(entry)) out.push(full)
+    }
+  }
   for (const entry of String(spec).split(',')) {
     const p = entry.trim()
     if (!p) continue
     const st = fs.statSync(p)
-    if (st.isDirectory()) {
-      for (const f of fs.readdirSync(p)) {
-        if (/\.(tf|ya?ml|json)$/.test(f)) out.push(path.join(p, f))
-      }
-    } else out.push(p)
+    if (st.isDirectory()) walk(p, 0)
+    else out.push(p)
   }
   if (!out.length) throw new Error(`no files matched '${spec}'`)
   return out.sort()
@@ -242,9 +276,60 @@ async function cmdEmit(flags, env, write, warn) {
     write(`    ${r.note}`)
   }
   for (const u of out.unpatchable) warn(`not written: ${u.reason}`)
+
+  if (flags.pr) {
+    // Everything a pull request needs, written to disk. Not opened: opening one
+    // needs a token, and a token that can open a pull request can usually do a
+    // great deal more. The payload is reviewable before anything irreversible
+    // happens, which is the point of the product.
+    const dir = flags.pr === true ? '.archsim/pr' : String(flags.pr)
+    const payload = pullRequestPayload({ emit: out, sources: Object.fromEntries(sources.map((s) => [s.path, s.text])), ir: target, base })
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(`${dir}/commit.txt`, payload.commitMessage)
+    fs.writeFileSync(`${dir}/body.md`, payload.body)
+    fs.writeFileSync(`${dir}/changes.diff`, payload.diff)
+    fs.writeFileSync(`${dir}/open.sh`, payload.script, { mode: 0o755 })
+    fs.writeFileSync(`${dir}/payload.json`, `${JSON.stringify({ branch: payload.branch, title: payload.title, labels: payload.labels, summary: payload.summary }, null, 2)}\n`)
+    warn(`wrote ${dir}/ — branch ${payload.branch}`)
+    warn(`review ${dir}/changes.diff, then run ${dir}/open.sh (it needs \`gh\`; ArchSim does not open pull requests itself)`)
+  }
+
   if (!flags.write && (out.patches.length || out.generated.length)) warn('(dry run — pass --write to apply)')
   return 0
 }
+
+// ── drift ───────────────────────────────────────────────────────────────────
+
+/**
+ * The design against the estate.
+ *
+ * Both sides become IR first, which is why this is one command rather than one
+ * per provider: `--ir` is the design, and any ingest flag supplies the live
+ * side, whether that came from `terraform show -json`, `kubectl get -o json`, a
+ * Pulumi stack export or a deployed CloudFormation template.
+ */
+async function cmdDrift(flags, env, write, warn) {
+  const { fs } = env
+  if (!flags.ir) throw new Error('--ir <archsim.lock.json> is the design; the live side comes from --plan/--k8s/--cfn/--pulumi')
+  const design = parseIR(fs.readFileSync(flags.ir, 'utf8'))
+  const liveFlags = { ...flags, ir: null }
+  const { ir: live, report } = loadIRFromFlags(liveFlags, env, warn)
+  if (report?.warnings?.length) for (const w of report.warnings.slice(0, 5)) warn(`${w.address}: ${w.msg}`)
+
+  const drift = compareToDeployed(design, live, { ignore: flags.ignore ? String(flags.ignore).split(',') : [] })
+  const body = driftMarkdown(drift, { note: `design ${irHash(design).slice(0, 8)} vs live ${irHash(live).slice(0, 8)}` })
+
+  if (flags.format === 'json') write(JSON.stringify(drift, replacerWithoutNodes, 2))
+  else if (flags.out) { fs.writeFileSync(flags.out, body); warn(`wrote ${flags.out}`) }
+  else write(body)
+
+  // Drift is a warning, not a failure: an unmerged pull request is drift, and a
+  // pipeline that blocks on it blocks on being mid-deploy.
+  return drift.clean ? 0 : 2
+}
+
+/** The full node is in the IR; repeating it in a drift report is noise. */
+const replacerWithoutNodes = (key, value) => (key === 'node' ? undefined : value)
 
 async function cmdMerge(flags, env, write, warn) {
   const { fs } = env
@@ -428,9 +513,13 @@ USAGE
   archsim <command> [options]
 
 INPUTS (any command that needs an architecture)
-  --plan <tfplan.json>     Terraform plan JSON (exact — every count expanded)
+  --plan <tfplan.json>     Terraform plan JSON or state (exact — counts expanded)
   --hcl <dir|files>        raw .tf files (best-effort; dynamic counts degrade loudly)
   --k8s <dir|files>        Kubernetes manifests (.yaml) or \`kubectl get -o json\`
+  --cfn <file|dir>         CloudFormation templates, JSON or YAML
+  --cdk <cdk.out>          a synthesized CDK app (never the TypeScript)
+  --pulumi <file>          \`pulumi stack export\` or \`pulumi preview --json\`
+  --helm <chart-dir>       an unrendered chart; \`--values\` to override
   --ir <archsim.lock.json> a committed IR
   --managed <mode>         observed (default) | partial | full
 
@@ -453,12 +542,17 @@ COMMANDS
   diff --base <lock>       what changed against a committed IR
   emit --base <lock> --ir <edited> --hcl <dir> [--write]
                            surgical patches back into the source files
+      --pr [dir]           also write a pull-request payload: branch, commit
+                           message, diff, body and an open.sh that runs gh
   merge --base --canvas --code [--out]
                            three-way reconciliation; conflicts are never auto-resolved
   validate                 check an IR and report what the numbers rest on
   replay --seed N [--run N]
                            reproduce a sampled world exactly
   migrate --in <v1.json>   ArchSim 1.x share payload → IR 2.0
+  drift --ir <lock>        the design against the deployed estate
+      (live side from --plan/--k8s/--cfn/--pulumi)
+      --format json --out drift.md --ignore <addresses>
   templates                the 100-architecture library
       --id <name>          write that architecture's IR (use with --out)
   faults                   the chaos library

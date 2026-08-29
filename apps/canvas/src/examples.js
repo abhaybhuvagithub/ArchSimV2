@@ -27,3 +27,71 @@ export const EXAMPLE_SLOS = {
     { id: 'crash', faults: [{ fault: 'crash', target: 'kind:app' }] },
   ],
 }
+
+/**
+ * A CloudFormation template, in the shape `cdk synth` writes: generated logical
+ * ids with their eight-hex suffix, a parameter with a default, a mapping, and a
+ * condition — all four of the things the reader has to resolve before the
+ * capacity figures mean anything.
+ */
+export const EXAMPLE_CFN = JSON.stringify({
+  AWSTemplateFormatVersion: '2010-09-09',
+  Description: 'Checkout — synthesized by CDK',
+  Parameters: {
+    Environment: { Type: 'String', Default: 'prod', AllowedValues: ['prod', 'staging'] },
+    CheckoutCount: { Type: 'Number', Default: 6 },
+  },
+  Mappings: {
+    Sizing: { prod: { Db: 'db.r6g.2xlarge' }, staging: { Db: 'db.t3.medium' } },
+  },
+  Conditions: {
+    IsProd: { 'Fn::Equals': [{ Ref: 'Environment' }, 'prod'] },
+  },
+  Resources: {
+    Vpc8378EB38: { Type: 'AWS::EC2::VPC', Properties: { CidrBlock: '10.0.0.0/16' } },
+    CheckoutAlbA1B2C3D4: {
+      Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer',
+      Properties: { Type: 'application', Subnets: [{ Ref: 'Vpc8378EB38' }] },
+    },
+    CheckoutTargetGroupE5F6A7B8: {
+      Type: 'AWS::ElasticLoadBalancingV2::TargetGroup',
+      Properties: { Port: 8080, VpcId: { Ref: 'Vpc8378EB38' } },
+    },
+    CheckoutListener9A8B7C6D: {
+      Type: 'AWS::ElasticLoadBalancingV2::Listener',
+      Properties: {
+        LoadBalancerArn: { Ref: 'CheckoutAlbA1B2C3D4' },
+        DefaultActions: [{ TargetGroupArn: { Ref: 'CheckoutTargetGroupE5F6A7B8' }, Type: 'forward' }],
+      },
+    },
+    CheckoutServiceB1CE1F2A: {
+      Type: 'AWS::ECS::Service',
+      Properties: {
+        DesiredCount: { Ref: 'CheckoutCount' },
+        LoadBalancers: [{ TargetGroupArn: { Ref: 'CheckoutTargetGroupE5F6A7B8' }, ContainerPort: 8080 }],
+      },
+    },
+    OrdersDb4F3E2D1C: {
+      Type: 'AWS::RDS::DBInstance',
+      Properties: {
+        Engine: 'postgres',
+        DBInstanceClass: { 'Fn::FindInMap': ['Sizing', { Ref: 'Environment' }, 'Db'] },
+        MultiAZ: { 'Fn::If': ['IsProd', true, false] },
+      },
+      DependsOn: ['CheckoutServiceB1CE1F2A'],
+    },
+    SessionCache7B6A5940: {
+      Type: 'AWS::ElastiCache::ReplicationGroup',
+      Properties: { NumCacheClusters: 2, Engine: 'redis' },
+      DependsOn: ['CheckoutServiceB1CE1F2A'],
+    },
+    OrderEvents2C3D4E5F: { Type: 'AWS::SQS::Queue', Properties: {}, DependsOn: ['CheckoutServiceB1CE1F2A'] },
+    ReceiptMailer6D7E8F90: {
+      Type: 'AWS::Lambda::Function',
+      Properties: { Runtime: 'nodejs20.x', ReservedConcurrentExecutions: 20 },
+      DependsOn: ['OrderEvents2C3D4E5F'],
+    },
+    TaskRole1A2B3C4D: { Type: 'AWS::IAM::Role', Properties: {} },
+    CDKMetadata: { Type: 'AWS::CDK::Metadata', Properties: { Analytics: 'v2:deflate64:...' } },
+  },
+}, null, 2)

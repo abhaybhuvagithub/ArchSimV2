@@ -14,11 +14,13 @@ import { AWS_RULES, AWS_STRUCTURAL, AWS_CONNECTORS, AWS_NOISE, NOISE_PREFIXES } 
 import { GCP_RULES, GCP_STRUCTURAL, GCP_CONNECTORS, GCP_NOISE } from './gcp.js'
 import { AZURE_RULES, AZURE_STRUCTURAL, AZURE_CONNECTORS, AZURE_NOISE } from './azure.js'
 import { K8S_RULES, K8S_STRUCTURAL, K8S_CONNECTORS } from './k8s.js'
+import { OCI_RULES, OCI_STRUCTURAL, OCI_CONNECTORS, OCI_NOISE } from './oci.js'
+import { CFN_RULES, CFN_STRUCTURAL, CFN_CONNECTORS, CFN_NOISE, CFN_NOISE_PREFIXES } from './cfn.js'
 
-const RULES = [...AWS_RULES, ...GCP_RULES, ...AZURE_RULES, ...K8S_RULES]
-const CONNECTORS = new Set([...AWS_CONNECTORS, ...GCP_CONNECTORS, ...AZURE_CONNECTORS, ...K8S_CONNECTORS])
-const NOISE = new Set([...AWS_NOISE, ...GCP_NOISE, ...AZURE_NOISE])
-const STRUCTURAL = new Set([...AWS_STRUCTURAL, ...GCP_STRUCTURAL, ...AZURE_STRUCTURAL, ...K8S_STRUCTURAL, ...CONNECTORS, ...NOISE])
+const RULES = [...AWS_RULES, ...GCP_RULES, ...AZURE_RULES, ...K8S_RULES, ...OCI_RULES, ...CFN_RULES]
+const CONNECTORS = new Set([...AWS_CONNECTORS, ...GCP_CONNECTORS, ...AZURE_CONNECTORS, ...K8S_CONNECTORS, ...OCI_CONNECTORS, ...CFN_CONNECTORS])
+const NOISE = new Set([...AWS_NOISE, ...GCP_NOISE, ...AZURE_NOISE, ...OCI_NOISE, ...CFN_NOISE])
+const STRUCTURAL = new Set([...AWS_STRUCTURAL, ...GCP_STRUCTURAL, ...AZURE_STRUCTURAL, ...K8S_STRUCTURAL, ...OCI_STRUCTURAL, ...CFN_STRUCTURAL, ...CONNECTORS, ...NOISE])
 
 const extra = []
 
@@ -46,7 +48,7 @@ export const isConnector = (type) => CONNECTORS.has(type)
  * on the canvas and the diagram stops being worth opening.
  */
 export const isNoise = (type) =>
-  NOISE.has(type) || NOISE_PREFIXES.some((p) => String(type).startsWith(p)) || isSubResource(type)
+  NOISE.has(type) || [...NOISE_PREFIXES, ...CFN_NOISE_PREFIXES].some((p) => String(type).startsWith(p)) || isSubResource(type)
 
 /**
  * `aws_cognito_user_pool_client` is a setting on `aws_cognito_user_pool`, which
@@ -73,6 +75,11 @@ export function providerOf(type) {
   if (type.startsWith('aws_')) return 'aws'
   if (type.startsWith('google_')) return 'gcp'
   if (type.startsWith('azurerm_')) return 'azure'
+  if (type.startsWith('oci_')) return 'oci'
+  // `AWS::Lambda::Function` is CloudFormation; `apps/v1:Deployment` is
+  // Kubernetes. Both contain a colon, so the CloudFormation shape — a `::`
+  // separator and a leading capital — is tested first.
+  if (/^[A-Z][A-Za-z0-9]*::/.test(type)) return 'cfn'
   if (type.includes(':')) return 'k8s'
   return 'unknown'
 }

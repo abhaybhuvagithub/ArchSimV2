@@ -73,7 +73,7 @@ projections of it; neither owns the system.
 |---|---|
 | [`@archsim/ir`](packages/ir) | ArchIR 2.0 — schema, validator, ULID identity, v1 migration, structural diff, three-way merge. Zero dependencies of any kind. |
 | [`@archsim/core`](packages/core) | The analytic engine, carried over from ArchSim 1.8: steady-state simulation, the 117-component catalog, chaos faults, the cost model, the Monte-Carlo runner, SLO evaluation and the convergent quick-fix engine. |
-| [`@archsim/iac`](packages/iac) | The bidirectional compiler. Terraform plan JSON, raw HCL and Kubernetes in; surgical CST patches back out. |
+| [`@archsim/iac`](packages/iac) | The bidirectional compiler. Terraform plan JSON, raw HCL, Kubernetes, CloudFormation/CDK, Pulumi and Helm charts in; surgical CST patches, drift reports and pull-request payloads back out. |
 | [`@archsim/des`](packages/des) | The discrete-event engine: G/G/c with bounded queues, retry storms, circuit breakers, thread starvation, partitions — validated against Erlang-C. |
 | [`@archsim/twin`](packages/twin) | Twin Lite: browser-pull telemetry, binding resolution, ghost-node discovery, model calibration, incident time-travel. |
 | [`@archsim/templates`](packages/templates) | 100 reference architectures as IR — each sized from the catalog, with its own workload and SLOs, so the gate has an opinion the moment one opens. |
@@ -89,6 +89,11 @@ npm install
 
 # what does my infrastructure look like?
 node packages/cli/bin/archsim.mjs ingest --plan examples/terraform/tfplan.json --out archsim.lock.json
+#   …or --hcl infra/ · --k8s manifests/ · --cfn template.yaml · --cdk cdk.out/
+#      --pulumi stack.json · --helm charts/checkout
+
+# and does it still match what is actually deployed?
+node packages/cli/bin/archsim.mjs drift --ir archsim.lock.json --plan live.json
 
 # will it hold?
 node packages/cli/bin/archsim.mjs init                      # writes .archsim/slo.yaml
@@ -218,7 +223,7 @@ db slowed 15× at unchanged arrival rate
 ### Every claim is a check
 
 ```bash
-npm run verify     # 445/445 checks passed.
+npm run verify     # 506/506 checks passed.
 ```
 
 That is the strategy, inherited from ArchSim 1.x and pointed at bigger claims:
@@ -269,6 +274,7 @@ passes after it.
 | — | Hardening against real repositories (`test/scan.mjs`), 158 mapping rules | ✅ |
 | — | Studio UX pass: guided tour, command palette, keyboard-first operation, working exports ([`docs/UX.md`](docs/UX.md)) | ✅ |
 | — | Wiring rules and the 100-template library ([`docs/TEMPLATES.md`](docs/TEMPLATES.md)) | ✅ |
+| — | CloudFormation/CDK, Pulumi, Helm and OCI ingest; drift against the deployed estate; pull-request payloads ([`docs/IAC.md`](docs/IAC.md)) | ✅ |
 | 6 | Twin Server: gateway → Kafka → ClickHouse, long retention, fleet-scale rollups | planned |
 
 Design document: [`docs/DESIGN.md`](docs/DESIGN.md). Deeper notes on

@@ -188,7 +188,13 @@ function normalizeRef(ref, prefix = '') {
   return `${prefix}${head.join('.')}`
 }
 
-function edgeCtx(res, resources) {
+/**
+ * The helpers a mapping rule's `edges()` may call. They return nothing here
+ * because on the plan-JSON path the dependency graph already carries these
+ * relationships — but a rule is entitled to call them, so every ingest path has
+ * to supply them or the first listener rule it meets throws.
+ */
+export function edgeCtx() {
   return {
     targetGroupsFor: () => [],
     firstTargetGroupRef: () => null,

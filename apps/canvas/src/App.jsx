@@ -7,13 +7,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { normalizeIR, validateIR, irHash, parseIR, diffIR } from '@archsim/ir'
 import { kinds, capacityFor, suggestFor, suggestOrphans, orphans, suggestPlacement } from '@archsim/core'
-import { planJsonToIR, hclToIR, k8sToIR, k8sObjects, parseYamlDocs } from '@archsim/iac'
+import { planJsonToIR, hclToIR, k8sToIR, k8sObjects, parseYamlDocs, cfnToIR, pulumiToIR } from '@archsim/iac'
 import { Twin, syntheticSource, reproduceInSimulator } from '@archsim/twin'
 import Canvas, { Minimap } from './Canvas.jsx'
 import Inspector from './Inspector.jsx'
 import { SimulatePanel, GatePanel, DesPanel, TwinPanel, CodePanel } from './Panels.jsx'
 import { autoLayout } from './layout.js'
-import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_SLOS } from './examples.js'
+import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_CFN, EXAMPLE_SLOS } from './examples.js'
 import Verdict from './Verdict.jsx'
 import { useGate } from './useGate.js'
 import { CommandPalette, Shortcuts, Tour } from './Overlays.jsx'
@@ -270,14 +270,22 @@ export default function App() {
     try {
       const trimmed = text.trim()
       let next
+      // Format is detected from the content, not the extension. A file called
+      // `stack.json` can be a Terraform plan, a CloudFormation template, a
+      // Pulumi export or a lockfile, and asking the reader which is asking them
+      // to know something the file already says.
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         const json = JSON.parse(trimmed)
         if (json.irVersion === '2.0') next = parseIR(trimmed)
         else if (json.planned_values || json.configuration || json.values) next = planJsonToIR(json, { file: name }).ir
+        else if (json.Resources && json.AWSTemplateFormatVersion !== undefined || (json.Resources && !Array.isArray(json.Resources))) next = cfnToIR([{ file: name, text }]).ir
+        else if (json.deployment?.resources || json.checkpoint || Array.isArray(json.steps)) next = pulumiToIR(json, { file: name }).ir
         else next = k8sToIR(k8sObjects(json), { file: name }).ir
       } else if (/^\s*(resource|provider|terraform|variable|module)\b/m.test(trimmed)) {
         next = hclToIR([{ path: name, text }], { managed: 'partial' }).ir
         setSources([{ path: name, text }])
+      } else if (/^\s*(AWSTemplateFormatVersion|Transform)\s*:/m.test(trimmed) || (/^\s*Resources\s*:/m.test(trimmed) && !/^\s*apiVersion\s*:/m.test(trimmed))) {
+        next = cfnToIR([{ file: name, text }]).ir
       } else {
         next = k8sToIR(parseYamlDocs(text, name).map((d) => d.value).filter(Boolean), { file: name }).ir
       }
@@ -457,11 +465,18 @@ export default function App() {
         </div>
         <div className="topactions">
           <button id="templates-btn" onClick={() => setGallery(true)} title="Browse 100 architecture templates — L">Templates</button>
-          <select onChange={(e) => { if (e.target.value) { importText(e.target.value === 'plan' ? EXAMPLE_PLAN : e.target.value === 'hcl' ? EXAMPLE_HCL : EXAMPLE_K8S, e.target.value === 'k8s' ? 'checkout.yaml' : 'main.tf'); e.target.value = '' } }} defaultValue="">
+          <select onChange={(e) => { if (e.target.value) { importText(
+              e.target.value === 'plan' ? EXAMPLE_PLAN
+                : e.target.value === 'hcl' ? EXAMPLE_HCL
+                  : e.target.value === 'cfn' ? EXAMPLE_CFN
+                    : EXAMPLE_K8S,
+              e.target.value === 'k8s' ? 'checkout.yaml' : e.target.value === 'cfn' ? 'Checkout.template.json' : 'main.tf',
+            ); e.target.value = '' } }} defaultValue="">
             <option value="">Load an example…</option>
             <option value="plan">Terraform plan JSON (exact)</option>
             <option value="hcl">Raw HCL (best-effort)</option>
             <option value="k8s">Kubernetes manifests</option>
+            <option value="cfn">CloudFormation / CDK synth</option>
           </select>
           <label className="filebtn">
             Import file
