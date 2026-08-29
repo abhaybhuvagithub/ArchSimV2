@@ -87,6 +87,7 @@ const Canvas = forwardRef(function Canvas({
 
   useImperativeHandle(apiRef, () => ({
     fit,
+    toDesign,
     zoomIn: () => zoomBy(1.25),
     zoomOut: () => zoomBy(1 / 1.25),
     reset: () => { touched.current = true; setView({ x: content.minX, y: content.minY, z: 1 }) },
@@ -98,7 +99,7 @@ const Canvas = forwardRef(function Canvas({
       const { w, h } = size()
       setView((v) => ({ ...v, x: p.x + W / 2 - w / v.z / 2, y: p.y + H / 2 - h / v.z / 2 }))
     },
-  }), [fit, zoomBy, content, view])
+  }), [fit, zoomBy, toDesign, content, view])
 
   useEffect(() => { const t = setTimeout(fit, 60); return () => clearTimeout(t) }, [ir.meta?.name]) // eslint-disable-line
   useEffect(() => { onViewChange?.(view) }, [view, onViewChange])

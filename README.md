@@ -76,6 +76,7 @@ projections of it; neither owns the system.
 | [`@archsim/iac`](packages/iac) | The bidirectional compiler. Terraform plan JSON, raw HCL and Kubernetes in; surgical CST patches back out. |
 | [`@archsim/des`](packages/des) | The discrete-event engine: G/G/c with bounded queues, retry storms, circuit breakers, thread starvation, partitions — validated against Erlang-C. |
 | [`@archsim/twin`](packages/twin) | Twin Lite: browser-pull telemetry, binding resolution, ghost-node discovery, model calibration, incident time-travel. |
+| [`@archsim/templates`](packages/templates) | 100 reference architectures as IR — each sized from the catalog, with its own workload and SLOs, so the gate has an opinion the moment one opens. |
 | [`@archsim/cli`](packages/cli) | `archsim` — the headless engine and the CI gate. |
 | [`apps/canvas`](apps/canvas) | The studio. A consumer of the packages, not their owner. |
 
@@ -96,9 +97,18 @@ node packages/cli/bin/archsim.mjs gate --ir archsim.lock.json
 # what happens over time, not just in steady state?
 node packages/cli/bin/archsim.mjs des --ir archsim.lock.json --rps 6000 --scenario retry:kind:sql
 
+# start from a real architecture instead of a blank canvas
+node packages/cli/bin/archsim.mjs templates                 # 100 of them, by category
+node packages/cli/bin/archsim.mjs templates --id checkout-flow --out checkout.lock.json
+node packages/cli/bin/archsim.mjs gate --ir checkout.lock.json
+
 # the studio
 npm run dev
 ```
+
+An IR that carries its own SLOs — a template, or a lockfile whose team keeps
+thresholds next to the design — gates without a config file. `archsim init` is
+for the case where you want those thresholds under review in their own file.
 
 Exit codes are the contract: `0` pass · `1` SLO violation · `2` error-budget
 risk · `3` the tool itself failed — which is never reported as a clean pass.
@@ -208,7 +218,7 @@ db slowed 15× at unchanged arrival rate
 ### Every claim is a check
 
 ```bash
-npm run verify     # 410/410 checks passed.
+npm run verify     # 445/445 checks passed.
 ```
 
 That is the strategy, inherited from ArchSim 1.x and pointed at bigger claims:
@@ -257,6 +267,8 @@ passes after it.
 | 4 | Discrete-event engine, chaos scenarios, closed-form and metamorphic validation | ✅ |
 | 5 | Twin Lite: PromQL/Datadog/OTLP pull, ghost nodes, calibration, time-travel replay | ✅ |
 | — | Hardening against real repositories (`test/scan.mjs`), 158 mapping rules | ✅ |
+| — | Studio UX pass: guided tour, command palette, keyboard-first operation, working exports ([`docs/UX.md`](docs/UX.md)) | ✅ |
+| — | Wiring rules and the 100-template library ([`docs/TEMPLATES.md`](docs/TEMPLATES.md)) | ✅ |
 | 6 | Twin Server: gateway → Kafka → ClickHouse, long retention, fleet-scale rollups | planned |
 
 Design document: [`docs/DESIGN.md`](docs/DESIGN.md). Deeper notes on

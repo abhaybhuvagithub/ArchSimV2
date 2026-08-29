@@ -6,7 +6,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { normalizeIR, validateIR, irHash, parseIR, diffIR } from '@archsim/ir'
-import { kinds, capacityFor } from '@archsim/core'
+import { kinds, capacityFor, suggestFor, suggestOrphans, orphans, suggestPlacement } from '@archsim/core'
 import { planJsonToIR, hclToIR, k8sToIR, k8sObjects, parseYamlDocs } from '@archsim/iac'
 import { Twin, syntheticSource, reproduceInSimulator } from '@archsim/twin'
 import Canvas, { Minimap } from './Canvas.jsx'
@@ -17,12 +17,33 @@ import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_SLOS }
 import Verdict from './Verdict.jsx'
 import { useGate } from './useGate.js'
 import { CommandPalette, Shortcuts, Tour } from './Overlays.jsx'
+import Templates from './Templates.jsx'
+import { template as buildTemplateIR } from '@archsim/templates'
 import { useToast } from './Toast.jsx'
 import { buildTour, SHORTCUTS } from './tour.js'
 import * as persist from './persist.js'
 import { downloadIR, saveFile, gateMarkdown, copyText, exportSVG, exportPNG, shareLink, readShareLink } from './exporters.js'
 
 const TABS = ['Simulate', 'Gate', 'Chaos (DES)', 'Twin', 'Code']
+
+/** A proposal from the wiring rules, as an IR edge that draws dashed. */
+const asEdge = (e) => ({
+  id: `${e.from}->${e.to}`,
+  from: e.from,
+  to: e.to,
+  callSemantics: e.callSemantics,
+  confidence: e.confidence,
+  attrs: { reason: e.why, inferred: 'true' },
+})
+
+/** `cache`, then `cache-2` — never two components with the same name. */
+function uniqueLabel(ir, kind) {
+  const taken = new Set(ir.nodes.map((n) => n.label))
+  if (!taken.has(kind)) return kind
+  let i = 2
+  while (taken.has(`${kind}-${i}`)) i++
+  return `${kind}-${i}`
+}
 
 const GATE_CONFIG = { runs: 200, seed: 42, thresholds: { passPct: 95, riskPct: 80 }, scenarios: EXAMPLE_SLOS.scenarios }
 
@@ -46,6 +67,8 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [theme, setTheme] = useState(persist.initialTheme)
   const [palette, setPalette] = useState(false)
+  const [dropping, setDropping] = useState(false)
+  const [gallery, setGallery] = useState(false)
   const [keysOpen, setKeysOpen] = useState(false)
   const [tourStep, setTourStep] = useState(null)
   const [restore, setRestore] = useState(null)
@@ -171,17 +194,69 @@ export default function App() {
     update({ ...ir, edges: [...ir.edges, { id: `${from}->${to}`, from, to, callSemantics: 'sync', confidence: 'high', attrs: { reason: 'drawn on the canvas' } }] })
   }, [ir, update])
 
-  const addNode = useCallback((kind) => {
+  /**
+   * A component with no edges is dead weight: it costs money, adds no latency
+   * and cannot fail anything, which is never what the person meant by adding
+   * it. So a new component arrives wired in — dashed, because ArchSim guessed.
+   */
+  const addNode = useCallback((kind, layout = null) => {
     const id = `canvas-${Date.now().toString(36)}`
-    update({
-      ...ir,
-      nodes: [...ir.nodes, {
-        id, kind, label: kind, capacity: { ...capacityFor(kind), replicas: 2 },
-        bindings: [], attrs: {}, layout: { x: 60, y: 60 },
-      }],
-    })
+    const label = uniqueLabel(ir, kind)
+    const node = {
+      id, kind, label, capacity: { ...capacityFor(kind), replicas: 2 },
+      bindings: [], attrs: {}, layout: layout || suggestPlacement(ir, kind),
+    }
+    const placed = { ...ir, nodes: [...ir.nodes, node] }
+    const { edges, refusal } = suggestFor(placed, id, { both: true })
+    update({ ...placed, edges: [...placed.edges, ...edges.map(asEdge)] })
     setSelected(id)
-  }, [ir, update])
+
+    if (edges.length) {
+      toast(`Added ${label} and wired it in: ${edges.map((e) => e.describe).join(' · ')}. Dashed, because ArchSim inferred it — open the connection to confirm or change it.`,
+        { action: undo, actionLabel: 'Undo' })
+    } else if (refusal) {
+      toast(`Added ${label}, deliberately unconnected. ${refusal}`, { action: undo, actionLabel: 'Undo' })
+    } else {
+      toast(`Added ${label}. Nothing on the canvas is a natural neighbour yet — alt-drag from one component to another to connect it.`,
+        { action: undo, actionLabel: 'Undo' })
+    }
+  }, [ir, update, toast, undo])
+
+  /** The same rules, applied to everything already stranded. */
+  /**
+   * Open a template. It replaces the canvas rather than merging into it — two
+   * architectures on one canvas is not a design, it is a mess — and the toast
+   * makes that reversible.
+   */
+  const openTemplate = useCallback((t) => {
+    const next = buildTemplateIR(t.id)
+    if (!next) return toast(`No template called ${t.id}.`, { tone: 'bad' })
+    setGallery(false)
+    setSelected(null); setMulti([]); setTwin(null); setGhosts([]); setDrift([])
+    // The Simulate tab's offered load is the reader's dial, but leaving it on
+    // the last design's number makes a 60-rps template look like it melts.
+    setRps(t.rps)
+    setScenario(null)
+    update(next)
+    setTimeout(() => canvasApi.current?.fit(), 80)
+    toast(`Opened ${t.name} — ${t.components} components at ${t.rps.toLocaleString()} rps. The gate is already running against its own SLOs.`,
+      { action: undo, actionLabel: 'Undo' })
+  }, [update, toast, undo])
+
+  const strandedCount = useMemo(() => orphans(ir).length, [ir])
+
+  const connectOrphans = useCallback(() => {
+    const stranded = orphans(ir)
+    if (!stranded.length) return toast('Every component is already connected.')
+    const { edges, refused } = suggestOrphans(ir)
+    if (!edges.length) {
+      return toast(`Nothing to wire: ${refused.length === stranded.length ? 'every' : 'each'} unconnected component here is a platform one, and ArchSim never puts those on the request path.`)
+    }
+    update({ ...ir, edges: [...ir.edges, ...edges.map(asEdge)] })
+    const tail = refused.length ? ` ${refused.length} left alone — platform components stay off the request path.` : ''
+    toast(`Wired ${edges.length} connection${edges.length > 1 ? 's' : ''}: ${edges.slice(0, 3).map((e) => e.describe).join(' · ')}${edges.length > 3 ? ` and ${edges.length - 3} more` : ''}.${tail} All dashed until you confirm them.`,
+      { action: undo, actionLabel: 'Undo' })
+  }, [ir, update, toast, undo])
 
   const onCalibrate = useCallback((nodeId) => {
     if (!twin) return
@@ -292,13 +367,13 @@ export default function App() {
   useEffect(() => {
     if (persist.read('tourSeen')) return
     const t = setTimeout(() => {
-      toast('First time here? Take the 8-step tour.', {
+      toast(`First time here? Take the ${tourSteps.length}-step tour.`, {
         action: startTour, actionLabel: 'Start tour', duration: 14000,
       })
       persist.write('tourSeen', true)
     }, 2200)
     return () => clearTimeout(t)
-  }, [startTour, toast])
+  }, [startTour, toast, tourSteps.length])
 
   const commands = useMemo(() => [
     { id: 'tour', group: 'Learn', title: 'Start the guided tour', keys: 'G', run: startTour },
@@ -311,6 +386,8 @@ export default function App() {
     { id: 'zin', group: 'Canvas', title: 'Zoom in', keys: '+', run: () => canvasApi.current?.zoomIn() },
     { id: 'zout', group: 'Canvas', title: 'Zoom out', keys: '−', run: () => canvasApi.current?.zoomOut() },
     { id: 'find', group: 'Canvas', title: 'Search components', keys: '/', run: () => searchRef.current?.focus() },
+    { id: 'templates', group: 'Start', title: 'Browse 100 architecture templates', hint: 'L', keys: 'L', run: () => setGallery(true) },
+    { id: 'connect', group: 'Edit', title: 'Connect every unconnected component', hint: 'Uses the wiring rules — platform components stay off the request path', keys: 'C', run: connectOrphans },
     { id: 'undo', group: 'Edit', title: 'Undo', keys: '⌘Z', run: undo },
     { id: 'redo', group: 'Edit', title: 'Redo', keys: '⇧⌘Z', run: redo },
     { id: 'theme', group: 'Edit', title: 'Cycle theme', desc: 'system, light, dark', keys: 'T', run: cycleTheme },
@@ -322,7 +399,7 @@ export default function App() {
     { id: 'x-link', group: 'Export', title: 'Copy a share link', run: () => doExport('link') },
     ...['lb', 'gateway', 'app', 'micro', 'worker', 'cache', 'sql', 'nosql', 'queue', 'kafka', 'blob', 'search', 'llm']
       .map((k) => ({ id: `add-${k}`, group: 'Add a component', title: k, run: () => addNode(k) })),
-  ], [startTour, switchVariant, twin, connectTwin, undo, redo, cycleTheme, doExport, addNode])
+  ], [startTour, switchVariant, twin, connectTwin, undo, redo, cycleTheme, doExport, addNode, connectOrphans])
 
   // ── keyboard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -338,6 +415,7 @@ export default function App() {
       }
       if (e.key === 'Escape') {
         // One layer at a time, topmost first.
+        if (gallery) return setGallery(false)
         if (palette) return setPalette(false)
         if (keysOpen) return setKeysOpen(false)
         if (tourStep !== null) return setTourStep(null)
@@ -355,11 +433,13 @@ export default function App() {
       else if (e.key.toLowerCase() === 'm' && comparable) switchVariant(variant === 'pr' ? 'main' : 'pr')
       else if (e.key.toLowerCase() === 't') cycleTheme()
       else if (e.key.toLowerCase() === 'g') startTour()
+      else if (e.key.toLowerCase() === 'c') connectOrphans()
+      else if (e.key.toLowerCase() === 'l') setGallery(true)
       else if ((e.key === 'Backspace' || e.key === 'Delete') && (selected || multi.length)) { e.preventDefault(); onDelete(null) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [palette, keysOpen, tourStep, search, undo, redo, comparable, variant, switchVariant, cycleTheme, startTour, selected, multi, onDelete])
+  }, [gallery, palette, keysOpen, tourStep, search, undo, redo, comparable, variant, switchVariant, cycleTheme, startTour, selected, multi, onDelete, connectOrphans])
 
   const viewRect = useMemo(() => {
     const el = document.querySelector('.stage')
@@ -376,6 +456,7 @@ export default function App() {
           <span className="tag">digital twin studio</span>
         </div>
         <div className="topactions">
+          <button id="templates-btn" onClick={() => setGallery(true)} title="Browse 100 architecture templates — L">Templates</button>
           <select onChange={(e) => { if (e.target.value) { importText(e.target.value === 'plan' ? EXAMPLE_PLAN : e.target.value === 'hcl' ? EXAMPLE_HCL : EXAMPLE_K8S, e.target.value === 'k8s' ? 'checkout.yaml' : 'main.tf'); e.target.value = '' } }} defaultValue="">
             <option value="">Load an example…</option>
             <option value="plan">Terraform plan JSON (exact)</option>
@@ -424,8 +505,17 @@ export default function App() {
       <div className="body">
         <aside className="palette">
           <h4>Add</h4>
+          <p className="palettehint">Click to place, or drag onto the canvas.</p>
           {['lb', 'gateway', 'app', 'micro', 'worker', 'cache', 'sql', 'nosql', 'queue', 'kafka', 'blob', 'search', 'llm'].map((k) => (
-            <button key={k} onClick={() => addNode(k)}>{k}</button>
+            <button
+              key={k}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/x-archsim-kind', k)
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+              onClick={() => addNode(k)}
+            >{k}</button>
           ))}
           <h4>Counts</h4>
           <div className="counts">
@@ -434,6 +524,11 @@ export default function App() {
             <div>{ir.edges.filter((e) => e.confidence && e.confidence !== 'high').length} inferred, unconfirmed</div>
             <div>{ir.passthrough.length} passthrough blocks</div>
           </div>
+          {strandedCount > 0 && (
+            <button className="btn stranded" onClick={connectOrphans}>
+              Connect {strandedCount} unconnected
+            </button>
+          )}
           {validation.warnings.length > 0 && (
             <details className="warnings">
               <summary>{validation.warnings.length} caveats</summary>
@@ -442,7 +537,27 @@ export default function App() {
           )}
         </aside>
 
-        <main className="stage" id="stage">
+        <main
+          className={`stage${dropping ? ' dropping' : ''}`}
+          id="stage"
+          onDragOver={(e) => {
+            if (![...e.dataTransfer.types].includes('application/x-archsim-kind')) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
+            if (!dropping) setDropping(true)
+          }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropping(false) }}
+          onDrop={(e) => {
+            const kind = e.dataTransfer.getData('application/x-archsim-kind')
+            setDropping(false)
+            if (!kind) return
+            e.preventDefault()
+            // Land where it was dropped, in design coordinates, centred under
+            // the cursor rather than hanging off its top-left corner.
+            const p = canvasApi.current?.toDesign?.(e)
+            addNode(kind, p ? { x: Math.round((p.x - 75) / 8) * 8, y: Math.round((p.y - 22) / 8) * 8 } : null)
+          }}
+        >
           <Canvas ref={canvasApi} ir={ir} frame={frame} ghosts={ghosts} selected={selected} multi={multi}
                   search={search} changed={changed}
                   onSelect={onSelectNode} onMove={onMove} onConnect={onConnect}
@@ -484,6 +599,7 @@ export default function App() {
         {tab === 'Code' && <CodePanel baseIR={baseIR} ir={ir} sources={sources} />}
       </div>
 
+      <Templates open={gallery} onClose={() => setGallery(false)} onPick={openTemplate} />
       <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
       <Shortcuts open={keysOpen} onClose={() => setKeysOpen(false)} rows={SHORTCUTS} />
       {tourStep !== null && (

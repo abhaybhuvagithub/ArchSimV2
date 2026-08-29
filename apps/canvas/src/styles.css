@@ -176,6 +176,20 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
   padding: 6px 11px; cursor: pointer; font-size: 13.5px;
 }
 .palette button:hover { border-color: var(--accent); color: var(--accent); }
+.palettehint { color: var(--muted); font-size: 12px; margin: 0 0 8px; line-height: 1.35; }
+.palette .btn.stranded { width: 100%; margin-top: 12px; border-color: var(--warn); color: var(--warn); }
+.palette .btn.stranded:hover { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+
+/* A drop target should say so before the drop, not after. */
+.stage.dropping { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.stage.dropping::after {
+  content: 'Drop to place it here — ArchSim will wire it in';
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  background: var(--panel); border: 1px solid var(--accent); color: var(--accent);
+  border-radius: var(--r-pill); padding: 6px 16px; font-size: 13px; pointer-events: none;
+  box-shadow: var(--elev-2);
+}
+
 .counts { color: var(--muted); font-size: 12.5px; }
 .counts div { padding: 2px 0; }
 .warnings { margin-top: 14px; font-size: 12.5px; color: var(--muted); }
@@ -350,11 +364,12 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 }
 
 /* Phone and split-pane widths. The top bar is the only row that cannot shrink
-   on its own — a select and three buttons on one line push the document 355px
-   wider than the viewport, and the whole page then scrolls sideways. Let it
-   wrap, let the select give up its width first, and drop the hash, which is a
-   detail nobody reads on a phone. */
-@media (max-width: 720px) {
+   on its own — a select and four buttons on one line push the document past the
+   viewport and the whole page then scrolls sideways. Let it wrap, let the select
+   give up its width first, and drop the hash, which is a detail nobody reads on
+   a small screen. The breakpoint is set by the widest the bar's contents get,
+   not by a device: every control added to it moves this number. */
+@media (max-width: 980px) {
   .top { flex-wrap: wrap; row-gap: 10px; padding: 10px 14px; }
   .brand { flex: 1 1 auto; min-width: 0; }
   .topactions { flex-wrap: wrap; width: 100%; }
@@ -581,6 +596,33 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 .cmditem .hint { margin-left: auto; color: var(--muted); font-size: 11.5px; }
 .cmditem .desc { color: var(--muted); font-size: 12px; }
 .cmdempty { padding: 26px; text-align: center; color: var(--muted); font-size: 13.5px; }
+
+/* ── the template gallery ──────────────────────────────────────────────────
+   Wider than the command palette, because a template row has to state its
+   numbers: choosing between two architectures is a decision about cost and
+   latency, not about names. */
+.sheet.gallery { width: min(760px, calc(100vw - 32px)); top: 8vh; }
+.cats { display: flex; gap: 6px; padding: 10px 12px; overflow-x: auto; border-bottom: 1px solid var(--border); scrollbar-width: none; }
+.cats::-webkit-scrollbar { display: none; }
+.cats .chip { white-space: nowrap; cursor: pointer; }
+.cats .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.gallerylist { max-height: 56vh; }
+.trow {
+  display: block; width: 100%; text-align: left; border: 0; background: transparent;
+  padding: 10px 12px; border-radius: 12px; cursor: pointer; color: var(--text);
+}
+.trow:hover, .trow.active { background: color-mix(in srgb, var(--accent) var(--state-hover), transparent); }
+.trow.active { box-shadow: inset 0 0 0 1px var(--accent); }
+.tmain { display: flex; align-items: baseline; gap: 10px; }
+.tmain strong { font-size: 14.5px; letter-spacing: -.01em; }
+.tcat { color: var(--muted); font-size: 11.5px; }
+.tabout { margin: 3px 0 6px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.tfacts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cmdfoot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 18px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted);
+}
+.gallery .empty { padding: 26px; text-align: center; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
 
 kbd {
   font-family: var(--font-mono); font-size: 11px; padding: 2px 6px;

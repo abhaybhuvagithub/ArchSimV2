@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 
 /* ── focus management ─────────────────────────────────────────────────────── */
 
-function useFocusTrap(open, ref) {
+export function useFocusTrap(open, ref) {
   const previous = useRef(null)
   useEffect(() => {
     if (!open) return

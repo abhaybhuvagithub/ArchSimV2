@@ -45,6 +45,9 @@ import { parseConfig, EXAMPLE_CONFIG } from '../packages/cli/src/config.js'
 import { runGate } from '../packages/cli/src/gate.js'
 import { markdownReport, jsonReport, sarifReport, terminalReport } from '../packages/cli/src/report.js'
 
+import { suggestFor, suggestOrphans, orphans, roleOf, suggestPlacement, ROLES } from '@archsim/core'
+import { TEMPLATES, CATEGORIES, template, buildTemplate, searchTemplates, TEMPLATE_SCENARIOS } from '@archsim/templates'
+
 import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -1396,6 +1399,148 @@ function hasLiteralCount(text, node) {
   }
   return false
 }
+
+// ── wiring rules ────────────────────────────────────────────────────────────
+section('Wiring: what connects to what')
+
+const wireIR = (specs, edges = []) => normalizeIR({
+  ...createIR({ name: 'wiring' }),
+  nodes: specs.map(([kind, label, x, y]) =>
+    irNode({ id: `w-${label}`, kind, label, layout: { x, y } }, capacityFor)),
+  edges: edges.map(([a, b]) => irEdge({ from: `w-${a}`, to: `w-${b}` })),
+})
+
+const wireChain = wireIR([
+  ['client', 'users', 60, 60], ['lb', 'edge', 270, 60], ['app', 'api', 480, 60],
+  ['sql', 'db', 900, 60], ['queue', 'events', 690, 160], ['worker', 'mailer', 900, 160],
+  ['monitor', 'prom', 900, 320], ['cache', 'sessions', 690, 60],
+])
+
+check('every catalog kind resolves to a role', () => kinds().every((k) => typeof roleOf(k) === 'string'))
+check('a client is a source', () => roleOf('client') === 'source')
+check('a queue is async and a worker consumes it', () => roleOf('kafka') === 'async' && roleOf('worker') === 'consumer')
+check('an unlisted kind is classified from its catalog shape, not dumped', () => {
+  // `cdn` declares a cache-hit rate; `transcode` is slow. Neither is guessed as
+  // a bare default.
+  return roleOf('cdn') === 'edge' && roleOf('batch') === 'consumer'
+})
+
+check('wiring connects a stranded design end to end', () => {
+  const { edges } = suggestOrphans(wireChain)
+  const pairs = new Set(edges.map((e) => `${e.from}>${e.to}`))
+  return pairs.has('w-users>w-edge') && pairs.has('w-edge>w-api')
+})
+check('a queue is written by compute and read by a worker', () => {
+  const { edges } = suggestOrphans(wireChain)
+  return edges.some((e) => e.from === 'w-events' && e.to === 'w-mailer')
+    && edges.some((e) => e.to === 'w-events')
+})
+check('an edge touching a queue is async, not sync', () => {
+  const { edges } = suggestOrphans(wireChain)
+  return edges.filter((e) => e.from === 'w-events' || e.to === 'w-events').every((e) => e.callSemantics === 'async')
+})
+check('observability is never wired into the request path', () => {
+  const { edges, refused } = suggestOrphans(wireChain)
+  return !edges.some((e) => e.from === 'w-prom' || e.to === 'w-prom')
+    && refused.some((r) => r.id === 'w-prom' && /platform component/.test(r.why))
+})
+check('every proposal is marked inferred, never authored', () => {
+  const { edges } = suggestOrphans(wireChain)
+  return edges.length > 0 && edges.every((e) => e.inferred === true && e.confidence === 'medium')
+})
+check('wiring never duplicates an edge that already exists', () => {
+  const wired = normalizeIR({ ...wireChain, edges: [irEdge({ from: 'w-users', to: 'w-edge' })] })
+  const { edges } = suggestOrphans(wired)
+  return !edges.some((e) => e.from === 'w-users' && e.to === 'w-edge')
+})
+check('wiring is deterministic', () => {
+  const a = suggestOrphans(wireChain).edges.map((e) => `${e.from}>${e.to}`).join('|')
+  const b = suggestOrphans(wireChain).edges.map((e) => `${e.from}>${e.to}`).join('|')
+  return a === b
+})
+check('wiring a design leaves nothing stranded but the platform components', () => {
+  const { edges } = suggestOrphans(wireChain)
+  const wired = normalizeIR({ ...wireChain, edges: [...wireChain.edges, ...edges.map((e, i) => irEdge({ id: `x${i}`, from: e.from, to: e.to }))] })
+  return orphans(wired).map((n) => n.label).join() === 'prom'
+})
+check('a wired design still simulates', () => {
+  const { edges } = suggestOrphans(wireChain)
+  const wired = normalizeIR({ ...wireChain, edges: [...wireChain.edges, ...edges.map((e, i) => irEdge({ id: `x${i}`, from: e.from, to: e.to }))] })
+  return Number.isFinite(simulate(wired, 1000).p99)
+})
+check('a lone component proposes nothing rather than inventing a peer', () => {
+  const alone = wireIR([['app', 'only', 60, 60]])
+  return suggestFor(alone, 'w-only').edges.length === 0
+})
+check('placement puts a store to the right of the compute that reads it', () => {
+  return suggestPlacement(wireChain, 'sql').x > suggestPlacement(wireChain, 'app').x
+})
+check('placement never lands a component on top of another', () => {
+  const p = suggestPlacement(wireChain, 'app')
+  return !wireChain.nodes.some((n) => n.layout && Math.abs(n.layout.x - p.x) < 80 && Math.abs(n.layout.y - p.y) < 60)
+})
+check('every role in the table is one the classifier can produce', () => {
+  const produced = new Set(kinds().map(roleOf))
+  return Object.keys(ROLES).every((r) => produced.has(r))
+})
+
+// ── the template library ────────────────────────────────────────────────────
+section('Templates: 100 architectures')
+
+check('there are exactly 100 templates', () => TEMPLATES.length === 100)
+check('ten categories, ten templates each', () => {
+  const counts = {}
+  for (const t of TEMPLATES) counts[t.category] = (counts[t.category] || 0) + 1
+  return CATEGORIES.length === 10 && CATEGORIES.every((c) => counts[c] === 10)
+})
+check('template ids are unique', () => new Set(TEMPLATES.map((t) => t.id)).size === 100)
+check('every template names only catalog kinds', () =>
+  TEMPLATES.every((t) => t.kinds.every((k) => !!CATALOG[k])))
+
+const built = TEMPLATES.map((t) => template(t.id))
+check('every template builds a valid IR', () =>
+  built.every((ir) => validateIR(ir, { kinds: kinds() }).errors.length === 0))
+check('every template is fully connected — no stranded components', () =>
+  built.every((ir) => orphans(ir).length === 0))
+check('every template has a source and a sink', () =>
+  built.every((ir) => ir.nodes.some(isSourceNode) && ir.edges.length >= ir.nodes.length - 1))
+check('every template simulates to a finite p99', () =>
+  built.every((ir, i) => Number.isFinite(simulate(ir, TEMPLATES[i].rps).p99)))
+check('every template carries its own workload and four SLOs', () =>
+  built.every((ir) => ir.workloads.length === 1 && ir.slos.length === 4))
+check('every template round-trips through serialization', () =>
+  built.every((ir) => irHash(parseIR(serializeIR(ir))) === irHash(ir)))
+check('template ids are reproducible — same spec, same irHash', () =>
+  TEMPLATES.every((t) => irHash(template(t.id)) === irHash(template(t.id))))
+check('no template runs hot at the peak of its own day', () =>
+  built.every((ir, i) => capacityReport(ir, simulate(ir, TEMPLATES[i].rps * 2)).rows.every((r) => r.util <= 0.8)))
+check('an edge naming an undeclared component is a build error, not a dropped edge', () => {
+  try {
+    buildTemplate(['bad', 'Bad', 'Web & API', 100, 100, 0.99, 100, 'app:a', 'a>ghost', 'x'])
+    return false
+  } catch (err) { return /undeclared component/.test(err.message) }
+})
+check('search finds a template by component kind', () =>
+  searchTemplates('kafka').length > 0 && searchTemplates('kafka').every((t) => /kafka/.test(JSON.stringify(t))))
+check('search finds a template by category', () => searchTemplates('Finance & regulated').length === 10)
+check('search with no query returns everything', () => searchTemplates('').length === 100)
+check('the library is not uniformly green — the gate has real opinions', () => {
+  // A hundred templates that all pass would mean the thresholds were fitted to
+  // the answer. A sample must contain more than one verdict.
+  const verdicts = new Set()
+  for (const t of TEMPLATES.filter((_, i) => i % 9 === 0)) {
+    const ir = template(t.id)
+    const mc = runMonteCarlo(ir, { runs: 24, seed: 42, scenarios: TEMPLATE_SCENARIOS })
+    const rows = evaluateSLOs(ir, mc).results
+    verdicts.add(rows.some((r) => r.verdict === 'fail') ? 'fail' : rows.some((r) => r.verdict === 'risk') ? 'risk' : 'pass')
+  }
+  return verdicts.size >= 2
+})
+check('a template gates end to end through runGate', () => {
+  const ir = template('checkout-flow')
+  const r = runGate({ ir, config: { ...parseConfig(''), scenarios: TEMPLATE_SCENARIOS } })
+  return r.evaluation.results.length === 4 && [0, 1, 2].includes(r.exitCode)
+})
 
 // ────────────────────────────────────────────────────────────────────────────
 await Promise.all(pending)

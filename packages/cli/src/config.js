@@ -12,6 +12,18 @@ import { FAULTS } from '@archsim/core'
 
 export const DEFAULT_CONFIG_PATH = '.archsim/slo.yaml'
 
+/**
+ * The scenarios a gate runs when nobody has said which. Not a substitute for a
+ * declared set — an estate has its own failure modes — but a design that has
+ * never been asked what happens when an availability zone goes away has not
+ * been gated at all.
+ */
+export const DEFAULT_SCENARIOS = [
+  { id: 'az', faults: [{ fault: 'az' }] },
+  { id: 'retry', faults: [{ fault: 'retry', target: 'kind:sql' }] },
+  { id: 'crash', faults: [{ fault: 'crash', target: 'kind:app' }] },
+]
+
 export function parseConfig(text, file = DEFAULT_CONFIG_PATH) {
   const docs = parseYamlDocs(text, file)
   const raw = docs.find((d) => d.value && typeof d.value === 'object')?.value || {}

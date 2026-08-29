@@ -11,7 +11,8 @@ import { parseIR, serializeIR, validateIR, irHash, normalizeIR, fromV1, threeWay
 import { kinds, capacityFor, simulate, capacityReport, costReport, runMonteCarlo, evaluateSLOs, compileFaults, FAULTS } from '@archsim/core'
 import { planJsonToIR, k8sToIR, k8sObjects, hclToIR, parseYamlDocs, emitChanges, applyEdits, coverage } from '@archsim/iac'
 import { runDES, escalate, analyzeStorm, analyzeStarvation, analyzeBreakers, checkErlangC } from '@archsim/des'
-import { parseConfig, EXAMPLE_CONFIG, DEFAULT_CONFIG_PATH } from './config.js'
+import { TEMPLATES, CATEGORIES, template as templateIR } from '@archsim/templates'
+import { parseConfig, EXAMPLE_CONFIG, DEFAULT_CONFIG_PATH, DEFAULT_SCENARIOS } from './config.js'
 import { runGate } from './gate.js'
 import { markdownReport, jsonReport, sarifReport, terminalReport } from './report.js'
 
@@ -39,6 +40,7 @@ export async function main(argv, env) {
     case 'replay': return cmdReplay(flags, env, write, warn)
     case 'migrate': return cmdMigrate(flags, env, write, warn)
     case 'init': return cmdInit(flags, env, write, warn)
+    case 'templates': return cmdTemplates(flags, env, write, warn)
     case 'faults': return cmdFaults(write)
     case 'coverage': return cmdCoverage(write)
     case 'selftest': return cmdSelftest(write, warn)
@@ -113,8 +115,18 @@ async function cmdGate(flags, env, write, warn) {
   const { fs } = env
   const { ir } = loadIRFromFlags(flags, env, warn)
   const configPath = flags.slo || (fs.existsSync(DEFAULT_CONFIG_PATH) ? DEFAULT_CONFIG_PATH : null)
-  if (!configPath) throw new Error(`no SLO file. Run \`archsim init\` to write ${DEFAULT_CONFIG_PATH}, or pass --slo <file>`)
-  const config = parseConfig(fs.readFileSync(configPath, 'utf8'), configPath)
+
+  // An IR that carries its own SLOs — a template, or a lockfile written by a
+  // team that keeps its thresholds with the design — is already gateable. Making
+  // it fail on a missing config file would be the tool insisting on its own
+  // filing system.
+  if (!configPath && !(ir.slos || []).length) {
+    throw new Error(`no SLO file, and this IR declares none of its own. Run \`archsim init\` to write ${DEFAULT_CONFIG_PATH}, or pass --slo <file>`)
+  }
+  const config = configPath
+    ? parseConfig(fs.readFileSync(configPath, 'utf8'), configPath)
+    : { ...parseConfig(''), scenarios: DEFAULT_SCENARIOS }
+  if (!configPath) warn(`no SLO file — gating on the ${ir.slos.length} SLOs this IR carries, under the default scenarios (${DEFAULT_SCENARIOS.map((s) => s.id).join(', ')})`)
   if (config.errors.length) {
     // A typo in an SLO file must never degrade quietly into "no SLO".
     for (const e of config.errors) warn(`${configPath}: ${e}`)
@@ -316,6 +328,38 @@ async function cmdInit(flags, env, write, warn) {
   return 0
 }
 
+/**
+ * The template library, from the terminal.
+ *
+ * Without `--id` it lists; with one it writes that architecture's IR to stdout
+ * or `--out`, which makes `archsim templates --id checkout-flow --out lock.json
+ * && archsim gate --ir lock.json` a two-line way to see the gate work on a real
+ * design before pointing it at your own.
+ */
+function cmdTemplates(flags, env, write, warn) {
+  const { fs } = env
+  if (!flags.id) {
+    let group = null
+    for (const t of TEMPLATES) {
+      if (t.category !== group) { group = t.category; write(`\n${group}`) }
+      write(`  ${t.id.padEnd(24)} ${String(t.components).padStart(2)} components  ${String(t.rps).padStart(6)} rps  p99<=${String(t.p99).padStart(6)}ms  $${String(Math.round(t.cost)).padStart(7)}/mo`)
+    }
+    write(`\n${TEMPLATES.length} templates in ${CATEGORIES.length} categories. Open one with --id <name>.`)
+    return 0
+  }
+  const ir = templateIR(flags.id)
+  if (!ir) {
+    warn(`no template called '${flags.id}'`)
+    const near = TEMPLATES.filter((t) => t.id.includes(flags.id) || flags.id.includes(t.id.split('-')[0])).slice(0, 5)
+    if (near.length) warn(`did you mean: ${near.map((t) => t.id).join(', ')}`)
+    return 3
+  }
+  const text = serializeIR(ir)
+  if (flags.out) { fs.writeFileSync(flags.out, text); write(`wrote ${flags.out}`); return 0 }
+  write(text)
+  return 0
+}
+
 function cmdFaults(write) {
   let group = null
   for (const f of FAULTS) {
@@ -415,6 +459,8 @@ COMMANDS
   replay --seed N [--run N]
                            reproduce a sampled world exactly
   migrate --in <v1.json>   ArchSim 1.x share payload → IR 2.0
+  templates                the 100-architecture library
+      --id <name>          write that architecture's IR (use with --out)
   faults                   the chaos library
   coverage                 what the mapping tables know
   selftest                 hold the DES against closed-form theory

@@ -39,6 +39,12 @@ export function buildTour({ setTab, switchVariant, setSearch, canvasApi }) {
       pad: 0,
     },
     {
+      title: 'A hundred designs to start from',
+      body: 'The palette adds one component at a time and wires it in for you — a database lands connected to the service that will read it, dashed because ArchSim inferred it. If you would rather start from a whole architecture, there are a hundred of them under Templates, each with its own workload and SLOs.',
+      target: '#templates-btn',
+      before: () => setTab('Simulate'),
+    },
+    {
       title: 'Hatched means guessed',
       body: 'A hatched component runs on a modelled prior rather than a measurement, and the gate samples it ±40%. Connect telemetry and one click replaces the prior with what production actually does — the band narrows and every future verdict sharpens.',
       target: '.palette',
@@ -73,6 +79,8 @@ export const SHORTCUTS = [
   { keys: 'M', what: 'Compare main / this PR' },
   { keys: 'T', what: 'Cycle theme' },
   { keys: 'G', what: 'Start the tour' },
+  { keys: 'C', what: 'Connect every unconnected component' },
+  { keys: 'L', what: 'Browse the template library' },
   { keys: 'Backspace', what: 'Remove selected component' },
   { keys: '⌥ drag', what: 'Connect two components' },
   { keys: '⌘ click', what: 'Add to selection' },

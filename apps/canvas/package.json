@@ -2,7 +2,7 @@
   "name": "@archsim/canvas",
   "version": "2.0.0",
   "private": true,
-  "description": "The canvas — one projection of the IR. The code is the other.",
+  "description": "The canvas \u2014 one projection of the IR. The code is the other.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,8 @@
     "@archsim/des": "2.0.0",
     "@archsim/twin": "2.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "@archsim/templates": "2.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",

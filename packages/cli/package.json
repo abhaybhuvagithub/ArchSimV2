@@ -1,18 +1,28 @@
 {
   "name": "@archsim/cli",
   "version": "2.0.0",
-  "description": "archsim — the headless engine and CI architecture gate. Node 20+, zero dependencies, no build step.",
+  "description": "archsim \u2014 the headless engine and CI architecture gate. Node 20+, zero dependencies, no build step.",
   "type": "module",
   "main": "src/main.js",
-  "bin": { "archsim": "bin/archsim.mjs" },
-  "exports": { ".": "./src/main.js" },
-  "files": ["src", "bin"],
+  "bin": {
+    "archsim": "bin/archsim.mjs"
+  },
+  "exports": {
+    ".": "./src/main.js"
+  },
+  "files": [
+    "src",
+    "bin"
+  ],
   "dependencies": {
     "@archsim/ir": "2.0.0",
     "@archsim/core": "2.0.0",
     "@archsim/iac": "2.0.0",
-    "@archsim/des": "2.0.0"
+    "@archsim/des": "2.0.0",
+    "@archsim/templates": "2.0.0"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "license": "MIT"
 }
