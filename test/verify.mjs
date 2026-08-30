@@ -66,6 +66,7 @@ import { PALETTES } from '../apps/canvas/src/persist.js'
 import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
 import { PROFILES, TARGET_UTIL, KNEE } from './benchmark.mjs'
 import { irDocument, irLineRanges, ownerOfLine } from '../apps/canvas/src/irview.js'
+import { loadBand } from '../apps/canvas/src/nodehint.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8')
@@ -2686,6 +2687,81 @@ check('the glossary search reaches an explanation, not just a name', () => {
 check('the Acronyms tab is wired into the deck', () => {
   const app = read('apps/canvas/src/App.jsx')
   return /TABS = \[[^\]]*'Acronyms'/.test(app) && app.includes('<AcronymsPanel />')
+})
+
+section('The node hint — what a component is, while you point at it')
+
+check('the load bands are monotone and cover every utilisation', () => {
+  // A band table with a gap or an inversion gives contradictory advice about
+  // two nearly identical numbers.
+  const order = { live: 0, drift: 1, breach: 2 }
+  let last = -1
+  for (let u = 0.36; u <= 1.4; u += 0.01) {
+    const b = loadBand(u, true)
+    if (!b?.say) throw new Error(`no band at util ${u.toFixed(2)}`)
+    if (order[b.tone] < last) throw new Error(`tone goes backwards at util ${u.toFixed(2)}`)
+    last = order[b.tone]
+  }
+  return true
+})
+
+check('a stranded component is not called over-provisioned', () => {
+  // Idle and unreachable are identical in the arithmetic and are completely
+  // different problems. The first draft advised shrinking components that were
+  // at zero because nothing was wired to them.
+  const stranded = loadBand(0, false)
+  const idle = loadBand(0, true)
+  if (stranded.say === idle.say) throw new Error('stranded and idle give the same advice')
+  if (!/reaches this|not on a path/.test(stranded.say)) throw new Error('stranded does not say why it is at zero')
+  if (/larger than it needs|sized for something real/.test(stranded.say)) throw new Error('stranded is told it is over-provisioned')
+  return true
+})
+
+check('a third of capacity is not described as idle', () => {
+  // It was. 33% is a comfortable component, and calling it idle invites
+  // someone to shrink a thing that is working.
+  const b = loadBand(0.33, true)
+  if (/idle|barely/.test(b.say)) throw new Error(`33% described as "${b.say}"`)
+  return b.tone === 'live'
+})
+
+check('the knee is where the engine says it is', () => {
+  // These thresholds must agree with the point the analytic model itself stops
+  // trusting its own arithmetic, or the hint and the verdict disagree.
+  if (loadBand(0.65, true).tone !== 'live') throw new Error('65% should still read as fine')
+  if (loadBand(0.75, true).tone !== 'drift') throw new Error('75% should warn')
+  if (loadBand(0.9, true).tone !== 'breach') throw new Error('90% should be a breach')
+  return true
+})
+
+check('the hint is keyboard-reachable, which the old tooltip never was', () => {
+  const canvas = read('apps/canvas/src/Canvas.jsx')
+  if (!/tabIndex=\{0\}/.test(canvas)) throw new Error('nodes cannot be focused')
+  if (!/onFocus=/.test(canvas) || !/onBlur=/.test(canvas)) throw new Error('focus does not open the hint')
+  return true
+})
+
+check('the hint is clamped to the window', () => {
+  // Same lesson as the tour card: a card that follows its target off the edge
+  // has hidden itself.
+  const src = read('apps/canvas/src/NodeHint.jsx')
+  return /Math\.min\(Math\.max\(M, at\.left\)/.test(src) && /window\.innerWidth/.test(src)
+})
+
+check('a traffic source is not offered capacity advice', () => {
+  const src = read('apps/canvas/src/NodeHint.jsx')
+  if (!/isSourceNode\(node\)/.test(src)) throw new Error('sources are not distinguished')
+  return /!source && Number\.isFinite/.test(src)
+})
+
+check('the node keeps a short accessible name, and the edge keeps its tooltip', () => {
+  // The detail moved to the card, but `<title>` is the accessible name in SVG,
+  // so it stays — short. And the edge's own tooltip is a different element that
+  // must not have been caught by the same edit.
+  const canvas = read('apps/canvas/src/Canvas.jsx')
+  if (!/<title>\{`\$\{n\.label\} — \$\{kindName\(n\.kind\)\}`\}<\/title>/.test(canvas)) throw new Error('node has no accessible name')
+  if (!/confidence: \$\{conf\}/.test(canvas)) throw new Error("the edge's tooltip was lost")
+  return true
 })
 
 // ────────────────────────────────────────────────────────────────────────────

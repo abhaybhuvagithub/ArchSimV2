@@ -13,6 +13,7 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo
 import { kindGlyph, kindName } from '@archsim/core'
 import { edgePath } from './layout.js'
 import { requestOrder, circled } from './arrange.js'
+import NodeHint from './NodeHint.jsx'
 
 const W = 150
 const H = 44
@@ -24,11 +25,28 @@ const Canvas = forwardRef(function Canvas({
   stepNumbers = false,
   // The hovered node is shared state, not local: hovering here highlights the
   // node's lines in the IR view, and hovering a line there highlights it here.
-  hovered = null, onHover,
+  hovered = null, onHover, stats = null, drifts = null,
   onSelect, onMove, onConnect, onViewChange,
 }, apiRef) {
   const svgRef = useRef(null)
   const wrapRef = useRef(null)
+  // Where to put the hint. Measured from the node's own box rather than from
+  // the pointer, so the card does not jitter as the cursor moves inside it.
+  const [hintAt, setHintAt] = useState(null)
+
+  // Which nodes traffic can actually get to. Used only by the hint, to keep it
+  // from telling you a component is over-provisioned when the real problem is
+  // that nothing is wired to it.
+  const reachable = useMemo(() => {
+    const out = new Map()
+    for (const e of ir.edges) { if (!out.has(e.from)) out.set(e.from, []); out.get(e.from).push(e.to) }
+    const seen = new Set(ir.nodes.filter((n) => n.capacity?.source).map((n) => n.id))
+    const queue = [...seen]
+    while (queue.length) {
+      for (const next of out.get(queue.pop()) || []) if (!seen.has(next)) { seen.add(next); queue.push(next) }
+    }
+    return seen
+  }, [ir.nodes, ir.edges])
   const [drag, setDrag] = useState(null)
   const [pan, setPan] = useState(null)
   const [linkFrom, setLinkFrom] = useState(null)
@@ -280,7 +298,13 @@ const Canvas = forwardRef(function Canvas({
           return (
             <g key={n.id} className={cls} transform={`translate(${p.x} ${p.y})`}
                onPointerDown={onPointerDownNode(n)} onClick={finishLink(n)}
-               onPointerEnter={() => onHover?.(n.id)} onPointerLeave={() => onHover?.(null)}
+               tabIndex={0}
+               role="button"
+               aria-label={`${n.label}, ${kindName(n.kind)}`}
+               onPointerEnter={(ev) => { setHintAt(ev.currentTarget.getBoundingClientRect()); onHover?.(n.id) }}
+               onPointerLeave={() => { setHintAt(null); onHover?.(null) }}
+               onFocus={(ev) => { setHintAt(ev.currentTarget.getBoundingClientRect()); onHover?.(n.id) }}
+               onBlur={() => { setHintAt(null); onHover?.(null) }}
                style={{ cursor: 'grab' }}>
               {isChanged && <rect className="changering" x="-5" y="-5" width={W + 10} height={H + 10} rx="12" />}
               <rect width={W} height={H} rx="8" />
@@ -290,14 +314,9 @@ const Canvas = forwardRef(function Canvas({
               <text className="sub" x="36" y={H / 2 + 13}>{kindName(n.kind)} · {n.capacity.replicas}×</text>
               {obs && <text className="obs" x={W} y={-5} textAnchor="end">{Math.round(obs.rps)} rps</text>}
               {n.attrs?.badge && <text className="badge" x="4" y={H + 14}>{n.attrs.badge}</text>}
-              <title>
-                {`${n.label} (${kindName(n.kind)})\n`
-                  + `${n.capacity.replicas} × ${fmt(n.capacity.capPerReplica)} rps, p50 ${n.capacity.latencyMs.p50}ms\n`
-                  + `provenance: ${n.capacity.provenance.cls} — ${n.capacity.provenance.basis}\n`
-                  + `Monte-Carlo band: ±${n.capacity.jitter.capPct}%\n`
-                  + (isChanged ? 'CHANGED by this pull request\n' : '')
-                  + (n.bindings?.[0] ? `code: ${n.bindings[0].address} (${n.bindings[0].managed})` : 'no IaC binding — this exists on the canvas but not in code')}
-              </title>
+              {/* Short, because this is the accessible name. The detail moved to
+                  the hover card, which appears immediately and can be styled. */}
+              <title>{`${n.label} — ${kindName(n.kind)}`}</title>
             </g>
           )
         })}
@@ -314,6 +333,20 @@ const Canvas = forwardRef(function Canvas({
 
         {linkFrom && <text className="hint" x={view.x + 16} y={view.y + h / view.z - 16}>click a second component to connect · Esc to cancel</text>}
       </svg>
+
+      {/* Outside the SVG on purpose: an HTML card can be styled with the same
+          tokens as everything else and clamped to the window, neither of which
+          an SVG `<title>` can do. */}
+      {hovered && hintAt && !drag && (
+        <NodeHint
+          node={ir.nodes.find((n) => n.id === hovered)}
+          at={hintAt}
+          stat={stats?.[hovered]}
+          drift={drifts?.[hovered]}
+          changed={changed?.has(hovered)}
+          reachable={reachable.has(hovered)}
+        />
+      )}
     </div>
   )
 })

@@ -6,7 +6,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { normalizeIR, validateIR, irHash, parseIR, diffIR } from '@archsim/ir'
-import { kinds, capacityFor, suggestFor, suggestOrphans, orphans, suggestPlacement, kindName, describeKind } from '@archsim/core'
+import { kinds, capacityFor, suggestFor, suggestOrphans, orphans, suggestPlacement, kindName, describeKind, simulate } from '@archsim/core'
 import { planJsonToIR, hclToIR, k8sToIR, k8sObjects, parseYamlDocs, cfnToIR, pulumiToIR } from '@archsim/iac'
 import { Twin, syntheticSource, reproduceInSimulator } from '@archsim/twin'
 import Canvas, { Minimap } from './Canvas.jsx'
@@ -88,6 +88,13 @@ export default function App() {
   const setTriView = (v) => { setTriViewState(v); persist.write('triView', v) }
   // Shared between the canvas and the IR view, in both directions.
   const [hovered, setHovered] = useState(null)
+
+  // One nominal simulation, for the hover card. The gate samples hundreds of
+  // worlds; this is the single deterministic run behind the numbers a hint
+  // shows, so hovering never costs what gating costs.
+  const nominalStats = useMemo(() => {
+    try { return simulate(ir, rps).stats } catch { return null }
+  }, [ir, rps])
   const [keysOpen, setKeysOpen] = useState(false)
   const [tourStep, setTourStep] = useState(null)
   const [restore, setRestore] = useState(null)
@@ -639,7 +646,7 @@ export default function App() {
         >
           <Canvas ref={canvasApi} ir={ir} frame={frame} ghosts={ghosts} selected={selected} multi={multi}
                   search={search} changed={changed} stepNumbers={stepNumbers}
-                  hovered={hovered} onHover={setHovered}
+                  hovered={hovered} onHover={setHovered} stats={nominalStats}
                   onSelect={onSelectNode} onMove={onMove} onConnect={onConnect}
                   onViewChange={setCanvasView} />
 

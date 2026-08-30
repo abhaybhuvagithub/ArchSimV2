@@ -1044,3 +1044,67 @@ kbd {
 @media (max-width: 700px) {
   .acrow { grid-template-columns: 1fr; }
 }
+
+/* ── the node hover card ──────────────────────────────────────────────────
+   Positioned fixed and clamped, for the reason the tour card is: a card that
+   follows its target past the edge of the window has hidden itself. */
+.nodehint {
+  position: fixed; z-index: 60; pointer-events: none;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-card);
+  box-shadow: var(--elev-3); padding: var(--sp-3);
+  animation: hintin var(--d-short2) var(--e-decelerate) both;
+}
+@keyframes hintin { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+.nodehint header { display: flex; align-items: baseline; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.nodehint header b { font-size: 13.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nhglyph { font-size: 15px; flex: none; }
+.nhkind {
+  font-family: var(--label-font); text-transform: var(--label-tt); letter-spacing: var(--label-ls);
+  font-size: 9.5px; color: var(--muted); margin-left: auto; flex: none;
+}
+
+/* Utilisation leads, because it is the number that decides whether the design
+   works, and it was the one the old tooltip did not carry. */
+.nhload { margin-bottom: var(--sp-3); }
+.nhbar { height: 4px; border-radius: 2px; background: var(--panel2); overflow: hidden; margin-bottom: var(--sp-1); }
+.nhbar i { display: block; height: 100%; border-radius: 2px; background: var(--twin-live); }
+.nhload.tone-drift .nhbar i { background: var(--twin-drift); }
+.nhload.tone-breach .nhbar i { background: var(--twin-breach); }
+.nhloadtext { display: flex; gap: var(--sp-2); align-items: baseline; }
+.nhloadtext b { font-family: var(--font-mono); font-size: 12px; flex: none; }
+.nhloadtext span { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.nhload.tone-breach .nhloadtext b { color: var(--twin-breach); }
+.nhload.tone-drift .nhloadtext b { color: var(--twin-drift); }
+
+.nhfacts { margin: 0 0 var(--sp-2); display: grid; gap: 3px; }
+.nhfacts > div { display: flex; gap: var(--sp-2); align-items: baseline; }
+.nhfacts dt {
+  font-family: var(--label-font); text-transform: var(--label-tt); letter-spacing: var(--label-ls);
+  font-size: 9.5px; color: var(--muted); min-width: 62px; flex: none;
+}
+.nhfacts dd { margin: 0; font-size: 12px; font-family: var(--font-mono); min-width: 0; }
+.nhfacts .tone-breach { color: var(--twin-breach); }
+
+.nhnote, .nhdrift, .nhchanged, .nhprov, .nhcode {
+  margin: var(--sp-2) 0 0; font-size: 11px; line-height: 1.45; color: var(--muted);
+}
+.nhnote { color: var(--text); border-left: 2px solid var(--twin-sim); padding-left: var(--sp-2); }
+.nhdrift { border-left: 2px solid var(--twin-drift); padding-left: var(--sp-2); }
+.nhdrift span, .nhchanged {
+  font-family: var(--label-font); text-transform: var(--label-tt); letter-spacing: var(--label-ls);
+  font-size: 9.5px; color: var(--twin-drift);
+}
+.nhchanged { color: var(--accent); }
+.nhprov, .nhcode { border-top: 1px solid var(--border); padding-top: var(--sp-2); font-size: 10.5px; }
+.nhcode { font-family: var(--font-mono); border-top: 0; padding-top: 0; }
+
+/* Keyboard reach. The old native tooltip never appeared on focus at all. */
+.node:focus-visible { outline: none; }
+.node:focus-visible > rect:first-of-type { stroke: var(--accent); stroke-width: 3; }
+
+:root[data-sr] .nodehint { animation: none; }
+.nhsource {
+  margin: 0 0 var(--sp-3); font-size: 11.5px; line-height: 1.45; color: var(--text);
+  border-left: 2px solid var(--twin-sim); padding-left: var(--sp-2);
+}
