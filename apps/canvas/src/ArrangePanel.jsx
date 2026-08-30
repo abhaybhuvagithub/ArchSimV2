@@ -20,7 +20,7 @@ const NUMBERS = [
   { key: 'length', label: 'total edge px', hint: 'Ink. The least important of the four, and the one every layout tool optimises first.' },
 ]
 
-export function ArrangePanel({ ir, apply, selected, multi, onFit }) {
+export function ArrangePanel({ ir, apply, selected, multi, onFit, autoTidy, setAutoTidy }) {
   const ranked = useMemo(() => rankLayouts(ir), [ir])
   const current = useMemo(() => layoutQuality(ir), [ir])
   // `selected` and `multi` are separate in the canvas's model — a plain click
@@ -96,12 +96,20 @@ export function ArrangePanel({ ir, apply, selected, multi, onFit }) {
 
       <h4>Tidy</h4>
       <div className="controls">
+        <label className="toggle">
+          <input type="checkbox" checked={!!autoTidy} onChange={(e) => setAutoTidy(e.target.checked)} />
+          Tidy automatically after a drop
+        </label>
         <button className="btn" onClick={() => apply(snapAll(ir), 'Snapped every component to the grid.')}>Snap to grid</button>
         <button className="btn" onClick={() => { apply(tighten(ir), 'Pulled the design back to the top left.'); setTimeout(onFit, 60) }}>
           Tighten to origin
         </button>
-        <span className="note">Tightening matters for exports: empty space above and left of the diagram is exported too.</span>
       </div>
+      <p className="note">
+        Automatic tidying only runs when a drop made the diagram measurably worse — a component landed on another, or
+        a new connection crossed something. Dropping into empty space leaves the canvas exactly where you put things.
+        Tightening matters for exports: the empty space above and left of a dragged diagram is exported too.
+      </p>
 
       <h4>Align a selection</h4>
       <div className="controls">

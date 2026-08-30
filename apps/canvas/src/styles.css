@@ -321,6 +321,9 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 .arrangetable .tabout { margin: 4px 0 0; max-width: 460px; }
 .arrangetable tr.bestrow td { background: color-mix(in srgb, var(--ok) 7%, transparent); }
 .arrangetable .chip.ok { margin-left: 8px; color: var(--ok); border-color: var(--ok); }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; }
+.toggle input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+
 .better { color: var(--ok); }
 .worse { color: var(--warn); }
 

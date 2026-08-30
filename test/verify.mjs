@@ -55,7 +55,7 @@ import { TEMPLATES, CATEGORIES, template, buildTemplate, searchTemplates, TEMPLA
 
 import {
   layoutQuality, layoutScore, rankLayouts, LAYOUTS, layered, layeredTidy, force, grid, vertical,
-  align, distribute, snapAll, tighten, ALIGNMENTS,
+  align, distribute, snapAll, tighten, ALIGNMENTS, tidyIfWorse,
 } from '../apps/canvas/src/arrange.js'
 
 import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
@@ -1845,6 +1845,39 @@ check('snapping to the grid leaves every coordinate on it', () => {
 })
 check('every alignment names an axis the layout actually has', () =>
   ALIGNMENTS.every((a) => a.axis === 'x' || a.axis === 'y'))
+check('a drop into empty space is left exactly where it was put', () => {
+  const clean = layeredTidy(messy)
+  const dropped = normalizeIR({
+    ...clean,
+    nodes: [...clean.nodes, irNode({ id: 'dropped', kind: 'cache', label: 'dropped', layout: { x: 2000, y: 900 } }, capacityFor)],
+  })
+  const out = tidyIfWorse(clean, dropped)
+  return out.tidied === false && out.ir.nodes.find((n) => n.id === 'dropped').layout.x === 2000
+})
+check('a drop on top of another component tidies, and says why', () => {
+  const clean = layeredTidy(messy)
+  const victim = clean.nodes[0]
+  const dropped = normalizeIR({
+    ...clean,
+    nodes: [...clean.nodes, irNode({ id: 'dropped', kind: 'cache', label: 'dropped', layout: { ...victim.layout } }, capacityFor)],
+  })
+  const out = tidyIfWorse(clean, dropped)
+  return out.tidied && /sitting on top/.test(out.reason) && layoutQuality(out.ir).overlaps === 0
+})
+check('tidying after a drop never leaves the canvas worse than the drop did', () => {
+  const clean = layeredTidy(messy)
+  const dropped = normalizeIR({
+    ...clean,
+    nodes: [...clean.nodes, irNode({ id: 'dropped', kind: 'cache', label: 'dropped', layout: { ...clean.nodes[0].layout } }, capacityFor)],
+  })
+  const out = tidyIfWorse(clean, dropped)
+  return layoutScore(layoutQuality(out.ir)) <= layoutScore(layoutQuality(dropped))
+})
+check('a drop that hurts nothing measurable is never given a reason', () => {
+  const clean = layeredTidy(messy)
+  const out = tidyIfWorse(clean, clean)
+  return out.tidied === false && out.reason === null && out.ir === clean
+})
 check('the score weights overlaps above crossings above ink', () =>
   layoutScore({ crossings: 0, overlaps: 1, backward: 0, length: 0 }) >
   layoutScore({ crossings: 2, overlaps: 0, backward: 0, length: 0 }) &&

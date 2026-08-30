@@ -13,6 +13,7 @@ import Canvas, { Minimap } from './Canvas.jsx'
 import Inspector from './Inspector.jsx'
 import { SimulatePanel, GatePanel, DesPanel, TwinPanel, CodePanel } from './Panels.jsx'
 import ArrangePanel from './ArrangePanel.jsx'
+import { tidyIfWorse } from './arrange.js'
 import { autoLayout } from './layout.js'
 import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_CFN, EXAMPLE_SLOS } from './examples.js'
 import Verdict from './Verdict.jsx'
@@ -70,6 +71,9 @@ export default function App() {
   const [palette, setPalette] = useState(false)
   const [dropping, setDropping] = useState(false)
   const [gallery, setGallery] = useState(false)
+  // Tidying after a drop is on by default and remembered, because the people who
+  // hate it hate it immediately and should be able to turn it off once.
+  const [autoTidy, setAutoTidy] = useState(() => persist.read('autoTidy', true))
   const [keysOpen, setKeysOpen] = useState(false)
   const [tourStep, setTourStep] = useState(null)
   const [restore, setRestore] = useState(null)
@@ -209,19 +213,28 @@ export default function App() {
     }
     const placed = { ...ir, nodes: [...ir.nodes, node] }
     const { edges, refusal } = suggestFor(placed, id, { both: true })
-    update({ ...placed, edges: [...placed.edges, ...edges.map(asEdge)] })
-    setSelected(id)
+    const wired = { ...placed, edges: [...placed.edges, ...edges.map(asEdge)] }
 
+    // Only tidy when the drop actually made the diagram worse — a component
+    // landed on another, or the new connections crossed something. A drop into
+    // empty space leaves the canvas exactly where it was, including wherever
+    // the person chose to put the thing.
+    const { ir: next, tidied, reason } = autoTidy ? tidyIfWorse(ir, wired) : { ir: wired, tidied: false, reason: null }
+    update(next)
+    setSelected(id)
+    if (tidied) setTimeout(() => canvasApi.current?.fit(), 80)
+
+    const tail = tidied ? ` ${reason}` : ''
     if (edges.length) {
-      toast(`Added ${label} and wired it in: ${edges.map((e) => e.describe).join(' · ')}. Dashed, because ArchSim inferred it — open the connection to confirm or change it.`,
+      toast(`Added ${label} and wired it in: ${edges.map((e) => e.describe).join(' · ')}. Dashed, because ArchSim inferred it — open the connection to confirm or change it.${tail}`,
         { action: undo, actionLabel: 'Undo' })
     } else if (refusal) {
-      toast(`Added ${label}, deliberately unconnected. ${refusal}`, { action: undo, actionLabel: 'Undo' })
+      toast(`Added ${label}, deliberately unconnected. ${refusal}${tail}`, { action: undo, actionLabel: 'Undo' })
     } else {
-      toast(`Added ${label}. Nothing on the canvas is a natural neighbour yet — alt-drag from one component to another to connect it.`,
+      toast(`Added ${label}. Nothing on the canvas is a natural neighbour yet — alt-drag from one component to another to connect it.${tail}`,
         { action: undo, actionLabel: 'Undo' })
     }
-  }, [ir, update, toast, undo])
+  }, [ir, update, toast, undo, autoTidy])
 
   /** The same rules, applied to everything already stranded. */
   /**
@@ -253,9 +266,12 @@ export default function App() {
     if (!edges.length) {
       return toast(`Nothing to wire: ${refused.length === stranded.length ? 'every' : 'each'} unconnected component here is a platform one, and ArchSim never puts those on the request path.`)
     }
-    update({ ...ir, edges: [...ir.edges, ...edges.map(asEdge)] })
+    const wired = { ...ir, edges: [...ir.edges, ...edges.map(asEdge)] }
+    const { ir: next, tidied, reason } = autoTidy ? tidyIfWorse(ir, wired) : { ir: wired, tidied: false, reason: null }
+    update(next)
+    if (tidied) setTimeout(() => canvasApi.current?.fit(), 80)
     const tail = refused.length ? ` ${refused.length} left alone — platform components stay off the request path.` : ''
-    toast(`Wired ${edges.length} connection${edges.length > 1 ? 's' : ''}: ${edges.slice(0, 3).map((e) => e.describe).join(' · ')}${edges.length > 3 ? ` and ${edges.length - 3} more` : ''}.${tail} All dashed until you confirm them.`,
+    toast(`Wired ${edges.length} connection${edges.length > 1 ? 's' : ''}: ${edges.slice(0, 3).map((e) => e.describe).join(' · ')}${edges.length > 3 ? ` and ${edges.length - 3} more` : ''}.${tail} All dashed until you confirm them.${tidied ? ` ${reason}` : ''}`,
       { action: undo, actionLabel: 'Undo' })
   }, [ir, update, toast, undo])
 
@@ -613,6 +629,8 @@ export default function App() {
             ir={ir}
             selected={selected}
             multi={multi}
+            autoTidy={autoTidy}
+            setAutoTidy={(v) => { setAutoTidy(v); persist.write('autoTidy', v) }}
             onFit={() => canvasApi.current?.fit()}
             apply={(next, message) => { update(next); toast(message, { action: undo, actionLabel: 'Undo' }) }}
           />

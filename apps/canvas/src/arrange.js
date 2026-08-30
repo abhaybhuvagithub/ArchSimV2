@@ -419,3 +419,56 @@ export function tighten(ir) {
     nodes: ir.nodes.map((n) => ({ ...n, layout: { x: snap(at(n).x - minX + MARGIN), y: snap(at(n).y - minY + MARGIN) } })),
   }
 }
+
+/* ── keeping the canvas arranged as it is edited ──────────────────────────── */
+
+/**
+ * Tidy after an edit — but only when the edit made the diagram measurably worse.
+ *
+ * The naive version of this feature re-lays out the whole canvas every time a
+ * component is added, and it is horrible to use: you drop something on the left
+ * and eight other boxes leap across the screen. The person loses their place,
+ * and the positions they arranged by hand are gone.
+ *
+ * So the rule is the same one the Arrange tab uses. Measure before, measure
+ * after, and only move things when the numbers say the drop hurt: a component
+ * landed on top of another, or the new connections introduced crossings. A drop
+ * into empty space that crosses nothing leaves the canvas exactly as it was,
+ * including wherever the person chose to put the thing.
+ *
+ * @returns `{ ir, tidied, reason }` — `reason` is what to tell them, or null.
+ */
+export function tidyIfWorse(before, after, opts = {}) {
+  const wasQ = layoutQuality(before)
+  const isQ = layoutQuality(after)
+
+  const overlapping = isQ.overlaps > 0
+  const moreCrossings = isQ.crossings > wasQ.crossings
+  if (!overlapping && !moreCrossings) return { ir: after, tidied: false, reason: null }
+
+  // Try every layout, not just the layered one: a canvas that has drifted into a
+  // mesh is better served by the force layout, and the ranking already knows
+  // which is which. The current arrangement is in the ranking too, so if nothing
+  // beats the mess, nothing moves — a bad drop is not licence to rearrange.
+  const best = rankLayouts(after)[0]
+  if (best.id === 'current') return { ir: after, tidied: false, reason: null }
+
+  const fixedQ = best.quality
+  const parts = []
+  if (overlapping && fixedQ.overlaps === 0) {
+    parts.push(`${isQ.overlaps} component${isQ.overlaps > 1 ? 's were' : ' was'} sitting on top of another`)
+  }
+  if (moreCrossings && fixedQ.crossings < isQ.crossings) {
+    parts.push(`the new connection${isQ.crossings - wasQ.crossings > 1 ? 's' : ''} crossed ${isQ.crossings - wasQ.crossings} other${isQ.crossings - wasQ.crossings > 1 ? 's' : ''}`)
+  }
+  // Nothing the ranking offers actually fixes what went wrong. Leaving the
+  // canvas alone and saying nothing beats shuffling it for no stated reason.
+  if (!parts.length) return { ir: after, tidied: false, reason: null }
+
+  return {
+    ir: best.result,
+    tidied: true,
+    reason: `Tidied the canvas — ${parts.join(' and ')}.`,
+    layout: best.name,
+  }
+}
