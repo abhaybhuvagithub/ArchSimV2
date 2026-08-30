@@ -6,7 +6,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { normalizeIR, validateIR, irHash, parseIR, diffIR } from '@archsim/ir'
-import { kinds, capacityFor, suggestFor, suggestOrphans, orphans, suggestPlacement } from '@archsim/core'
+import { kinds, capacityFor, suggestFor, suggestOrphans, orphans, suggestPlacement, kindName, describeKind } from '@archsim/core'
 import { planJsonToIR, hclToIR, k8sToIR, k8sObjects, parseYamlDocs, cfnToIR, pulumiToIR } from '@archsim/iac'
 import { Twin, syntheticSource, reproduceInSimulator } from '@archsim/twin'
 import Canvas, { Minimap } from './Canvas.jsx'
@@ -15,6 +15,7 @@ import { SimulatePanel, GatePanel, DesPanel, TwinPanel, CodePanel } from './Pane
 import ArrangePanel from './ArrangePanel.jsx'
 import { tidyIfWorse, rankLayouts, requestOrder } from './arrange.js'
 import ViewMenu, { TextEquivalent, PALETTES } from './ViewMenu.jsx'
+import Palette from './Palette.jsx'
 import { autoLayout } from './layout.js'
 import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_CFN, EXAMPLE_SLOS } from './examples.js'
 import Verdict from './Verdict.jsx'
@@ -457,8 +458,15 @@ export default function App() {
     { id: 'x-svg', group: 'Export', title: 'Export the canvas as SVG', run: () => doExport('svg') },
     { id: 'x-png', group: 'Export', title: 'Export the canvas as PNG', desc: '2× for slides', run: () => doExport('png') },
     { id: 'x-link', group: 'Export', title: 'Copy a share link', run: () => doExport('link') },
-    ...['lb', 'gateway', 'app', 'micro', 'worker', 'cache', 'sql', 'nosql', 'queue', 'kafka', 'blob', 'search', 'llm']
-      .map((k) => ({ id: `add-${k}`, group: 'Add a component', title: k, run: () => addNode(k) })),
+    // Every component the catalog knows, not the thirteen the palette used to
+    // show. ⌘K is the fastest way to add one whose name you already know.
+    ...kinds().map((k) => ({
+      id: `add-${k}`,
+      group: 'Add a component',
+      title: kindName(k),
+      desc: describeKind(k),
+      run: () => addNode(k),
+    })),
   ], [startTour, switchVariant, twin, connectTwin, undo, redo, cycleTheme, doExport, addNode, connectOrphans, arrangeBest, stepNumbers, srMode])
 
   // ── keyboard ──────────────────────────────────────────────────────────────
@@ -584,39 +592,18 @@ export default function App() {
       {validation.errors.length > 0 && <div className="banner error">{validation.errors.length} IR error(s): {validation.errors[0].path} {validation.errors[0].msg}</div>}
 
       <div className="body">
-        <aside className="palette">
-          <h4>Add</h4>
-          <p className="palettehint">Click to place, or drag onto the canvas.</p>
-          {['lb', 'gateway', 'app', 'micro', 'worker', 'cache', 'sql', 'nosql', 'queue', 'kafka', 'blob', 'search', 'llm'].map((k) => (
-            <button
-              key={k}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('application/x-archsim-kind', k)
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => addNode(k)}
-            >{k}</button>
-          ))}
-          <h4>Counts</h4>
-          <div className="counts">
-            <div>{ir.nodes.length} components</div>
-            <div>{ir.edges.length} connections</div>
-            <div>{ir.edges.filter((e) => e.confidence && e.confidence !== 'high').length} inferred, unconfirmed</div>
-            <div>{ir.passthrough.length} passthrough blocks</div>
-          </div>
-          {strandedCount > 0 && (
-            <button className="btn stranded" onClick={connectOrphans}>
-              Connect {strandedCount} unconnected
-            </button>
-          )}
-          {validation.warnings.length > 0 && (
-            <details className="warnings">
-              <summary>{validation.warnings.length} caveats</summary>
-              {validation.warnings.slice(0, 8).map((w, i) => <p key={i}>{w.msg}</p>)}
-            </details>
-          )}
-        </aside>
+        <Palette
+          onAdd={addNode}
+          onConnectStranded={connectOrphans}
+          stranded={strandedCount}
+          counts={{
+            nodes: ir.nodes.length,
+            edges: ir.edges.length,
+            inferred: ir.edges.filter((e) => e.confidence && e.confidence !== 'high').length,
+            passthrough: ir.passthrough.length,
+          }}
+          warnings={validation.warnings}
+        />
 
         <main
           className={`stage${dropping ? ' dropping' : ''}`}

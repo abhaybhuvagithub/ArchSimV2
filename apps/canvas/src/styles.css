@@ -279,28 +279,45 @@ code, pre { font-size: 12.5px; }
 /* ── the three columns ────────────────────────────────────────────────── */
 .body { display: grid; grid-template-columns: 178px 1fr 328px; flex: 1; min-height: 0; }
 
-.palette { background: var(--panel); border-right: 1px solid var(--border); padding: 14px; overflow: auto; }
-.palette h4 { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: .05em; margin-top: 16px; }
-.palette h4:first-child { margin-top: 0; }
-.palette button {
-  display: block; width: 100%; text-align: left; margin-bottom: 5px;
-  background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
-  padding: 6px 11px; cursor: pointer; font-size: 13.5px;
-}
-.palette button:hover { border-color: var(--accent); color: var(--accent); }
-.palettehint { color: var(--muted); font-size: 12px; margin: 0 0 8px; line-height: 1.35; }
-.palette .btn.stranded { width: 100%; margin-top: 12px; border-color: var(--warn); color: var(--warn); }
-.palette .btn.stranded:hover { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.palette { background: var(--panel); border-right: 1px solid var(--border); padding: 12px; overflow: auto; }
+.palette h4 { color: var(--muted); font-size: 11px; margin: 18px 0 6px; }
 
-/* A drop target should say so before the drop, not after. */
-.stage.dropping { outline: 2px dashed var(--accent); outline-offset: -6px; }
-.stage.dropping::after {
-  content: 'Drop to place it here — ArchSim will wire it in';
-  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
-  background: var(--panel); border: 1px solid var(--accent); color: var(--accent);
-  border-radius: var(--r-pill); padding: 6px 16px; font-size: 13px; pointer-events: none;
-  box-shadow: var(--elev-2);
+.palettesearch { position: relative; display: flex; align-items: center; }
+.palettesearch input {
+  width: 100%; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: var(--r-btn); padding: 7px 12px; font-size: 13.5px; color: var(--text);
 }
+.palettesearch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.palettesearch .iconbtn { position: absolute; right: 4px; }
+.palettehint { color: var(--muted); font-size: 11.5px; margin: 8px 0 10px; line-height: 1.45; }
+
+.palettegroup { margin-bottom: 4px; }
+.grouphead {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: transparent; border: 0; color: var(--muted); cursor: pointer;
+  padding: 7px 4px; font-family: var(--label-font); text-transform: var(--label-tt);
+  letter-spacing: var(--label-ls); font-weight: var(--label-weight); font-size: 10.5px;
+}
+.grouphead:hover { color: var(--accent); }
+.grouphead:disabled { cursor: default; opacity: 1; }
+.grouphead .caret { width: 10px; }
+.groupcount { margin-left: auto; font-variant-numeric: tabular-nums; opacity: .7; }
+
+/* A row states the two figures that decide whether this is the component you
+   want. A palette of names alone makes you open each one to find out. */
+.palitem {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 6px 9px; margin-bottom: 4px; cursor: grab; color: var(--text);
+  transition: border-color var(--d-short2) var(--e-standard), color var(--d-short2) var(--e-standard);
+}
+.palitem:hover { border-color: var(--accent); }
+.palitem:active { cursor: grabbing; }
+.palitem:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.palglyph { font-size: 15px; flex: none; }
+.palbody { min-width: 0; }
+.palbody b { display: block; font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.palfacts { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
 
 .counts { color: var(--muted); font-size: 12.5px; }
 .counts div { padding: 2px 0; }

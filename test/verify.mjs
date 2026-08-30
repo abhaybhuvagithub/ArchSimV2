@@ -23,6 +23,7 @@ import {
   CATALOG, kinds, capacityFor, simulate, capacityReport, costReport, nodeCost, rateFor,
   compileFaults, FAULTS, runMonteCarlo, evaluateSLOs, structuralRisks, findCheapestFix,
   rightSizePlan, rng, streamFor, bandDraw, percentile, isSourceNode, PRICED_AT,
+  TAXONOMY, COMPONENT_CATEGORIES, kindsIn, categoryOf, describeKind, searchKinds, specOf,
 } from '@archsim/core'
 import {
   parseHCL, walkBlocks, addressOf, bodyOf, applyEdits, parseYamlDocs, getPath, k8sAddress,
@@ -1929,6 +1930,76 @@ check('every template numbers all of its connections', () =>
   TEMPLATES.every((t) => { const ir = template(t.id); return requestOrder(ir).length === ir.edges.length }))
 check('step glyphs are circled up to 20 and plain past it', () =>
   circled(1) === '①' && circled(20) === '⑳' && circled(21) === '21')
+
+// ── the catalog, as a person meets it ───────────────────────────────────────
+section('Catalog: 117 components a person can actually find')
+
+check('every catalog kind has a category and a description', () => {
+  const missing = kinds().filter((k) => !TAXONOMY[k])
+  if (missing.length) throw new Error(`undescribed: ${missing.join(', ')}`)
+  return true
+})
+check('nothing is described that the catalog does not have', () => {
+  const extra = Object.keys(TAXONOMY).filter((k) => !CATALOG[k])
+  if (extra.length) throw new Error(`described but absent: ${extra.join(', ')}`)
+  return true
+})
+check('every kind lands in exactly one declared category', () =>
+  Object.values(TAXONOMY).every(([c]) => COMPONENT_CATEGORIES.includes(c))
+  && kinds().every((k) => COMPONENT_CATEGORIES.filter((c) => kindsIn(c).includes(k)).length === 1))
+check('no category is empty', () => COMPONENT_CATEGORIES.every((c) => kindsIn(c).length > 0))
+check('the categories partition the catalog exactly', () =>
+  COMPONENT_CATEGORIES.reduce((n, c) => n + kindsIn(c).length, 0) === kinds().length)
+check('a description says something the name does not', () => {
+  // "Load Balancer — balances load" is a row that wastes a reader's time.
+  const lazy = kinds().filter((k) => {
+    const d = describeKind(k).toLowerCase()
+    const name = (CATALOG[k]?.name || '').toLowerCase().replace(/[^a-z ]/g, '')
+    return d.length < 40 || (name.length > 6 && d.startsWith(name))
+  })
+  if (lazy.length) throw new Error(`thin descriptions: ${lazy.slice(0, 4).join(', ')}`)
+  return true
+})
+check('search finds a component by a phrase only its description contains', () => {
+  const hits = searchKinds('replication lag', CATALOG)
+  return hits.length === 1 && hits[0] === 'cdc'
+})
+check('search finds a component by name and by category', () =>
+  searchKinds('vector', CATALOG).includes('vector')
+  && searchKinds('Google AI', CATALOG).length === kindsIn('Google AI').length)
+check('an empty search returns the whole catalog', () => searchKinds('', CATALOG).length === kinds().length)
+
+check('every capacity figure obeys Little\'s law', () => {
+  // Concurrency is in-flight requests, which is arrival rate times service
+  // time. A row where those disagree is a row where the analytic engine and the
+  // discrete-event engine will disagree about the same component.
+  const off = []
+  for (const k of kinds()) {
+    const s2 = specOf(k)
+    if (!Number.isFinite(s2.cap) || !s2.cap || !s2.concurrency) continue
+    const need = s2.cap * (s2.lat / 1000)
+    const ratio = need / s2.concurrency
+    if (ratio < 0.5 || ratio > 2) off.push(`${k} (${ratio.toFixed(2)}x)`)
+  }
+  if (off.length) throw new Error(`off by more than 2x: ${off.slice(0, 5).join(', ')}`)
+  return true
+})
+check('a bounded queue is never smaller than the pool it feeds', () =>
+  kinds().every((k) => {
+    const s2 = specOf(k)
+    return !s2.concurrency || !s2.queueDepth || s2.queueDepth >= s2.concurrency
+  }))
+check('every kind states an availability below one', () =>
+  kinds().filter((k) => !specOf(k).source).every((k) => {
+    const a = specOf(k).avail
+    return a === undefined || (a > 0.9 && a < 1)
+  }))
+check('the palette can reach every component in the catalog', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'apps/canvas/src/Palette.jsx'), 'utf8')
+  // It renders whatever `kindsIn` returns for each declared category, so the
+  // reachable set is the taxonomy — which the checks above pin to the catalog.
+  return /kindsIn\(c\)/.test(src) && /COMPONENT_CATEGORIES/.test(src) && !/\['lb', 'gateway'/.test(src)
+})
 
 // ── the studio's chrome ─────────────────────────────────────────────────────
 section('Chrome: fonts, the View menu, the tour')
