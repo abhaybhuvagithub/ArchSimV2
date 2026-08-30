@@ -67,6 +67,18 @@ projections of it; neither owns the system.
 
 ---
 
+## The benchmark
+
+`npm run benchmark` — 100 architectures × 10 operating conditions, all 1,000
+actually simulated, in about two and a half seconds. Each cell isolates one
+variable: three conditions vary load, seven hold load at the design point and
+vary the fault.
+
+It found four things worth arguing with, including that the knee is a cliff
+rather than a slope (98% of the library passes at its design point and 5%
+passes at 1.54×), and that two templates fail their own design point.
+[`docs/BENCHMARK.md`](docs/BENCHMARK.md) has the table and the arguments.
+
 ## The candidate library
 
 [**The Thousand Architectures**](https://abhaybhuvagithub.github.io/ArchSimV2/candidates/)

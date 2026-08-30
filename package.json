@@ -13,6 +13,7 @@
   },
   "scripts": {
     "verify": "node test/verify.mjs",
+    "benchmark": "node test/benchmark.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "deps": "node scripts/deps.mjs",
     "budget": "node scripts/budget.mjs",

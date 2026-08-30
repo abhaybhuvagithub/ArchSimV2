@@ -62,6 +62,7 @@ import { buildTour, SHORTCUTS } from '../apps/canvas/src/tour.js'
 import { PALETTES } from '../apps/canvas/src/persist.js'
 
 import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
+import { PROFILES, TARGET_UTIL, KNEE } from './benchmark.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8')
@@ -2391,6 +2392,56 @@ check('no component name is too long for the panel', () => {
   const LIMIT = 24
   const tooLong = kinds().map((k) => kindName(k)).filter((n) => n.length > LIMIT)
   if (tooLong.length) throw new Error(`too long for the panel (max ${LIMIT}): ${tooLong.join(', ')}`)
+  return true
+})
+
+check('the benchmark profiles isolate one variable each', () => {
+  // The first draft of the profile set ran retry-storm at 2.5× load and
+  // cache-stampede at 4×, so those cells measured the load rather than the
+  // fault, and 98% of the library failed both. Load profiles carry no faults;
+  // fault profiles sit at the design point.
+  for (const p of PROFILES) {
+    const hasFaults = p.faults.length > 0
+    if (hasFaults && p.rpsMul !== 1) throw new Error(`${p.id} varies both load (${p.rpsMul}×) and a fault`)
+    if (!hasFaults && p.rpsMul === 1 && p.id !== 'nominal') throw new Error(`${p.id} varies nothing`)
+  }
+  return PROFILES.length === 10
+})
+
+check('the load multipliers are derived from the sizing target', () => {
+  // 1 / 0.65 is where a correctly sized template reaches 100% utilisation. A
+  // multiplier picked because it made the table look interesting would tell
+  // you about the author, not the architectures.
+  const calib = read('test/calibrate-templates.mjs')
+  const target = Number(calib.match(/TARGET_UTIL = ([\d.]+)/)[1])
+  if (target !== TARGET_UTIL) throw new Error(`benchmark assumes ${TARGET_UTIL}, calibrator uses ${target}`)
+  return Math.abs(KNEE - 1 / target) < 0.01
+})
+
+check('the benchmark discriminates — no condition is unanimous', () => {
+  // A benchmark where everything fails carries exactly as much information as
+  // one where everything passes. Run a slice of the matrix and require that
+  // the conditions actually separate the library.
+  const slice = TEMPLATES.filter((_, i) => i % 9 === 0)
+  const verdicts = new Map()
+  for (const t of slice) {
+    const ir = template(t.id)
+    for (const p of PROFILES) {
+      const mc = runMonteCarlo(ir, {
+        runs: 10, seed: 42,
+        scenarios: [{ id: p.id, faults: p.faults }],
+        workloads: (ir.workloads || []).map((w) => ({ ...w, arrival: { ...w.arrival, rps: (w.arrival?.rps ?? 0) * p.rpsMul } })),
+      })
+      const rows = evaluateSLOs(ir, mc).results
+      const v = rows.some((r) => r.verdict === 'fail') ? 'fail' : 'pass'
+      if (!verdicts.has(p.id)) verdicts.set(p.id, new Set())
+      verdicts.get(p.id).add(v)
+    }
+  }
+  // Across the whole slice, at least three conditions must produce both
+  // outcomes — otherwise the matrix is a constant and not worth running.
+  const informative = [...verdicts.values()].filter((s) => s.size > 1).length
+  if (informative < 3) throw new Error(`only ${informative} of ${PROFILES.length} conditions separate anything`)
   return true
 })
 
