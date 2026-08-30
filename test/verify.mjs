@@ -2284,6 +2284,43 @@ check('CI proves the airgap rather than asserting it', () => {
   return ci.includes('--offline') && /archsim\.mjs gate/.test(ci) && ci.includes('airgapped')
 })
 
+check('the tour footer holds its buttons in any card width', () => {
+  // The Next button used to sit 49px past the card's right edge: seventeen
+  // progress dots took 187px of a 322px row, and `overflow: auto` turned the
+  // difference into a horizontal scrollbar. The dots are gone, the actions have
+  // their own wrapping row, and the card no longer scrolls sideways at all.
+  const css = read('apps/canvas/src/styles.css')
+  const foot = css.match(/\.tourfoot \{[^}]*\}/)[0]
+  if (!/flex-wrap:\s*wrap/.test(foot)) throw new Error('.tourfoot must wrap, not overflow')
+  const card = css.match(/\.tourcard \{ max-height[^}]*\}/)[0]
+  if (!/overflow-x:\s*hidden/.test(card)) throw new Error('.tourcard must never scroll horizontally')
+  return true
+})
+
+check('progress is a bar, not one dot per step', () => {
+  const jsx = read('apps/canvas/src/Overlays.jsx')
+  return jsx.includes('tourbar') && !jsx.includes('tourdots')
+})
+
+check('the spotlight stays inside the viewport', () => {
+  // Padding the ring 8px outside a full-width target put it past the window
+  // edge, which the page paid for with a horizontal scrollbar.
+  const jsx = read('apps/canvas/src/Overlays.jsx')
+  return /Math\.max\(0, r\.left - pad\)/.test(jsx) && /window\.innerWidth - left/.test(jsx)
+})
+
+check('nothing in the app can scroll the page sideways', () => {
+  const css = read('apps/canvas/src/styles.css')
+  // Each of these was a real regression: the deck's slide animation, the
+  // palette's over-long button, and a grid track sized to its widest child.
+  const deck = css.match(/\.deck \{[\s\S]*?\n\}/)[0]
+  if (!/overflow-x:\s*clip/.test(deck)) throw new Error('.deck must clip its entry animation')
+  const pal = css.match(/\.palette \{[\s\S]*?\n\}/)[0]
+  if (!/overflow-x:\s*hidden/.test(pal)) throw new Error('.palette must not scroll horizontally')
+  if (!/\.body > \* \{ min-width: 0; \}/.test(css)) throw new Error('grid tracks must not size to content')
+  return true
+})
+
 // ────────────────────────────────────────────────────────────────────────────
 await Promise.all(pending)
 process.stdout.write('\n\n')

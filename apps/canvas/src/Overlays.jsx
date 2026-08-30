@@ -174,8 +174,19 @@ export function Tour({ steps, index, onIndex, onClose }) {
     // than a spotlight on something the reader cannot see.
     const visible = r.bottom > 40 && r.top < window.innerHeight - 40 && r.right > 0 && r.left < window.innerWidth
     if (!visible || (!r.width && !r.height)) { setRect(null); return }
+    // The ring is drawn `pad` outside its target, which for a target as wide as
+    // the window puts it past the edge and gives the whole page a horizontal
+    // scrollbar. Keep the ring inside the viewport: the few padding pixels are
+    // not worth a scrollbar on every step that highlights a full-width bar.
     const pad = step.pad ?? 8
-    setRect({ top: r.top - pad, left: r.left - pad, width: r.width + pad * 2, height: r.height + pad * 2 })
+    const left = Math.max(0, r.left - pad)
+    const top = Math.max(0, r.top - pad)
+    setRect({
+      top,
+      left,
+      width: Math.min(r.width + pad * 2, window.innerWidth - left),
+      height: Math.min(r.height + pad * 2, window.innerHeight - top),
+    })
   }, [step])
 
   useLayoutEffect(() => {
@@ -230,13 +241,24 @@ export function Tour({ steps, index, onIndex, onClose }) {
       <div className="tourcard" ref={cardRef} style={cardPos} role="dialog" aria-modal="true" aria-label={`Tour step ${index + 1} of ${steps.length}`}>
         <h3>{step.title}</h3>
         <p>{step.body}</p>
-        <div className="tourfoot">
-          <div className="tourdots" aria-hidden="true">
-            {steps.map((s, i) => <i key={s.title} className={i === index ? 'on' : ''} />)}
+        {/*
+          Progress used to be one dot per step. Seventeen dots is not something
+          anyone counts, and they took 187px of a 322px row — which pushed Next
+          off the edge of the card and made the tour's own primary action
+          something you had to scroll sideways to reach.
+
+          A bar says the same thing in any width, and the buttons get a row of
+          their own so the one you need is always the one you can see.
+        */}
+        <div className="tourprogress">
+          <div className="tourbar" role="progressbar" aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={steps.length}>
+            <i style={{ width: `${((index + 1) / steps.length) * 100}%` }} />
           </div>
           <span className="tourstep">{index + 1}/{steps.length}</span>
-          <span className="spacer" />
+        </div>
+        <div className="tourfoot">
           <button className="btn" onClick={onClose}>{last ? 'Done' : 'Skip'}</button>
+          <span className="spacer" />
           {index > 0 && <button className="btn" onClick={() => onIndex(index - 1)}>Back</button>}
           {!last && <button className="btn primary" onClick={() => onIndex(index + 1)} autoFocus>Next</button>}
         </div>

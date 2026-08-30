@@ -277,9 +277,23 @@ code, pre { font-size: 12.5px; }
 .banner.error { background: color-mix(in srgb, var(--bad) 14%, var(--panel)); color: var(--bad); border-bottom: 1px solid var(--border); }
 
 /* ── the three columns ────────────────────────────────────────────────── */
+/* `min-width: 0` on the tracks: without it a grid track sizes to its widest
+   child's min-content, so one over-long label anywhere in a panel makes the
+   whole page scroll sideways. */
 .body { display: grid; grid-template-columns: 178px 1fr 328px; flex: 1; min-height: 0; }
+.body > * { min-width: 0; }
 
-.palette { background: var(--panel); border-right: 1px solid var(--border); padding: 12px; overflow: auto; }
+/* Scrolls down, never across. A sidebar with a horizontal scrollbar has put a
+   control somewhere you cannot see, which is the same defect as the tour card
+   hiding its own Next button. `min-width: 0` stops a wide child from pushing
+   the grid track — and, through it, the whole page — past the viewport. */
+.palette {
+  background: var(--panel); border-right: 1px solid var(--border); padding: 12px;
+  overflow-y: auto; overflow-x: hidden; min-width: 0;
+}
+/* Anything full-width in here wraps rather than sticking out: at 178px the
+   column is narrower than a sentence. */
+.palette .btn { width: 100%; white-space: normal; line-height: 1.35; text-align: center; }
 .palette h4 { color: var(--muted); font-size: 11px; margin: 18px 0 6px; }
 
 .palettesearch { position: relative; display: flex; align-items: center; }
@@ -404,6 +418,11 @@ code, pre { font-size: 12.5px; }
   border-top: 1px solid var(--border); background: var(--panel);
   height: clamp(180px, 36vh, 320px); flex: none;
   display: flex; flex-direction: column;
+  /* The panel arrives with a 10px shared-axis slide. Unclipped, that slide is
+     10px of horizontal page scroll on every tab change — a scrollbar appearing
+     and vanishing under the reader's cursor. The panel does its own scrolling,
+     so clipping here costs nothing. */
+  overflow-x: clip;
 }
 .tabs { display: flex; gap: 6px; padding: 10px 14px 0; }
 .tabs button {
@@ -724,17 +743,26 @@ code, pre { font-size: 12.5px; }
 }
 .tourcard h3 { font-size: 15px; margin-bottom: 6px; }
 .tourcard p { font-size: 13.5px; color: var(--muted); margin: 0 0 14px; line-height: 1.55; }
-.tourfoot { display: flex; align-items: center; gap: 10px; }
-.tourfoot .spacer { flex: 1; }
-.tourdots { display: flex; gap: 5px; }
-.tourdots i {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--border);
-  transition: background var(--d-short2) var(--e-standard), width var(--d-short2) var(--e-standard);
+/* Progress gets its own line, so its width is never in competition with the
+   buttons'. One dot per step took 187px of a 322px row and pushed Next off the
+   card — the tour's own primary action, reachable only by scrolling sideways. */
+.tourprogress { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.tourbar { flex: 1; min-width: 0; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.tourbar i {
+  display: block; height: 100%; background: var(--accent); border-radius: 2px;
+  transition: width var(--d-med) var(--e-emphasised);
 }
-.tourdots i.on { background: var(--accent); width: 16px; border-radius: 3px; }
 .tourstep { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-/* A long step must scroll inside the card rather than growing past the screen. */
-.tourcard { max-height: calc(100vh - 32px); overflow: auto; }
+
+/* The actions. `wrap` rather than a breakpoint, for the same reason the top bar
+   wraps unconditionally: a control added here later should drop to a second
+   line, never push the primary action out of the card. */
+.tourfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tourfoot .spacer { flex: 1; min-width: 0; }
+
+/* A long step scrolls inside the card rather than growing past the screen —
+   vertically. A dialog that scrolls sideways has hidden a control. */
+.tourcard { max-height: calc(100vh - 32px); overflow-y: auto; overflow-x: hidden; }
 
 .sheet {
   position: fixed; z-index: 95; left: 50%; top: 12vh; transform: translateX(-50%);
