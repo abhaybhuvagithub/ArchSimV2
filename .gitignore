@@ -8,3 +8,4 @@ coverage/
 
 # The single-file artifact page is a build output of `npm run artifact`.
 archsim-studio.html
+docs/candidates/candidates.json

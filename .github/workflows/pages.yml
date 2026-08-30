@@ -37,6 +37,15 @@ jobs:
       - run: npm install
       - run: npm run build
 
+      # The candidate library ships beside the studio, built from the data the
+      # repo carries so it cannot drift from docs/candidates. A private link is
+      # not somewhere anyone goes twice; a path on the site is.
+      - name: build the candidate library
+        run: |
+          node docs/candidates/generate.mjs
+          node docs/candidates/build-page.mjs --standalone \
+            --out apps/canvas/dist/candidates/index.html
+
       # v1 learned this the hard way: a deploy that reuses a stale checkout can
       # ship the *previous* build. Publish from a directory built in this run,
       # and assert the bundle the page references actually exists before pushing.
@@ -48,6 +57,12 @@ jobs:
           test -n "$ASSET"
           test -f "apps/canvas/dist/$ASSET"
           echo "publishing $ASSET"
+          # And the candidate page is a real page with its thousand rows in it,
+          # not an empty shell that happens to exist.
+          test -f apps/canvas/dist/candidates/index.html
+          ROWS=$(grep -o '"id":' apps/canvas/dist/candidates/index.html | wc -l)
+          test "$ROWS" -eq 1000 || { echo "candidate page has $ROWS rows, expected 1000"; exit 1; }
+          echo "publishing the candidate library — $ROWS rows"
 
       - name: publish to gh-pages
         run: |

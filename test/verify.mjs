@@ -2321,6 +2321,28 @@ check('nothing in the app can scroll the page sideways', () => {
   return true
 })
 
+check('the candidate library is published beside the studio', () => {
+  // A private artifact link is not somewhere anyone goes twice. The page is
+  // built from the repo's own data during the deploy, so it cannot drift.
+  const pages = read('.github/workflows/pages.yml')
+  if (!pages.includes('docs/candidates/build-page.mjs')) throw new Error('pages.yml never builds the candidate page')
+  if (!pages.includes('candidates/index.html')) throw new Error('the candidate page is not published to a path')
+  if (!/ROWS.*-eq 1000/.test(pages)) throw new Error('the deploy must assert the page actually has its rows')
+  return true
+})
+
+check('the candidate list is 1000 rows and says how many are distinct', () => {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'docs/candidates/generate.mjs')], { cwd: ROOT, encoding: 'utf8' })
+  if (!/^1000 candidates/m.test(out)) throw new Error('expected 1000 candidates')
+  const m = out.match(/(\d+) distinct \(archetype × constraint\)/)
+  if (!m) throw new Error('the generator must report how many are structurally distinct')
+  // The whole point of the number is that it is far below 1000. If a change
+  // ever made it approach 1000, the honesty in the README would be wrong.
+  const distinct = Number(m[1])
+  if (!(distinct > 50 && distinct < 300)) throw new Error(`distinct shapes = ${distinct}, which makes the README's claim wrong`)
+  return true
+})
+
 // ────────────────────────────────────────────────────────────────────────────
 await Promise.all(pending)
 process.stdout.write('\n\n')

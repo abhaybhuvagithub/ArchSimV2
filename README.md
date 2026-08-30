@@ -67,6 +67,18 @@ projections of it; neither owns the system.
 
 ---
 
+## The candidate library
+
+[**The Thousand Architectures**](https://abhaybhuvagithub.github.io/ArchSimV2/candidates/)
+— a thousand systems that could become templates, built as 250 real systems
+crossed with four constraints each.
+
+It ships with the honest number attached: those 1,000 rows contain **123**
+structurally distinct shapes, and the page has a filter that collapses to them.
+The rest are the same simulation with a different name on it — useful for
+finding a starting point you recognise, worthless as engineering. `docs/candidates/`
+holds the generator, the CSV and the reasoning.
+
 ## The packages
 
 | Package | What it is |
