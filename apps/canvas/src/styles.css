@@ -1,89 +1,136 @@
 /* ArchSim v2 studio.
  *
- * The design language is carried over from ArchSim 1.x rather than reinvented:
- * Apple's palette (pure black, #1d1d1f panels, system blue #2997ff), the system
- * font stack, pill controls, generous radii, and a canvas that is a soft radial
- * field rather than a flat slab. Two products from the same author should look
- * like it — and v1's chrome is already the one people have used.
+ * The design language is carried over from ArchSim 1.x rather than reinvented,
+ * and that includes the typography, which is the half that actually makes two
+ * products look related:
  *
- * Tokens mirror v1's names so the two stylesheets stay comparable at a glance.
+ *   IBM Plex Sans     body and controls
+ *   Space Grotesk     headings and the wordmark
+ *   IBM Plex Mono     code, figures, and every small label — uppercase, tracked
+ *
+ * The label treatment is the signature. A panel header set in uppercase mono at
+ * .09em tracking reads as instrumentation rather than as prose, which is what
+ * both of these tools are: a readout, not a document.
+ *
+ * Palettes match v1's three — Kesar, Glow, Lilac — because a person who has
+ * used one should be able to keep their colour in the other.
  */
 
 :root {
-  --bg: #f5f5f7;
-  --panel: #ffffff;
-  --panel2: #f5f5f7;
-  --border: #d2d2d7;
-  --text: #1d1d1f;
-  --muted: #6e6e73;
-  --accent: #0066cc;
-  --ok: #248a3d;
-  --warn: #b25000;
-  --bad: #d70015;
-  --canvas: radial-gradient(circle at 30% 20%, #ffffff 0%, #f0f0f2 75%);
-  --sel: #1d1d1f;
-  --shadow: rgba(0, 0, 0, .10);
-  --chip-bg: rgba(255, 255, 255, .94);
+  /* Type. Every family has a real fallback stack: the studio has to be legible
+     the moment it paints, before a webfont has arrived, and on a machine that
+     never gets one. */
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-display: 'Space Grotesk', 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
-  --r-card: 18px;
+  --label-font: var(--font-mono);
+  --label-tt: uppercase;
+  --label-ls: .09em;
+  --label-weight: 500;
+  --btn-weight: 500;
+
+  --r-card: 16px;
   --r-pill: 980px;
   --r-btn: 999px;
 
-  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* Kesar, light — v1's primary palette. */
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --panel2: #f0f1f5;
+  --border: #d8dce4;
+  --text: #141820;
+  --muted: #566273;
+  --accent: #FC470D;
+  --ok: #31c48d;
+  --warn: #b25000;
+  --bad: #d70015;
+  --canvas: radial-gradient(circle at 30% 20%, #ffffff 0%, #eef0f5 75%);
+  --sel: #141820;
+  --shadow: rgba(20, 24, 32, .10);
+  --chip-bg: rgba(255, 255, 255, .94);
 }
 
 /* The un-stamped default is the OS preference; an explicit choice wins in both
    directions. Only tokens are redefined — never a component's colour. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #000000;
-    --panel: #1d1d1f;
-    --panel2: #2c2c2e;
-    --border: #424245;
-    --text: #f5f5f7;
-    --muted: #86868b;
-    --accent: #2997ff;
-    --ok: #30d158;
-    --warn: #ff9f0a;
-    --bad: #ff453a;
-    --canvas: radial-gradient(circle at 30% 20%, #1a1a1c 0%, #000000 72%);
-    --sel: #ffffff;
-    --shadow: rgba(0, 0, 0, .6);
-    --chip-bg: rgba(29, 29, 31, .92);
+    --bg: #0a0d12;
+    --panel: #11161f;
+    --panel2: #161d28;
+    --border: #2a3444;
+    --text: #e8edf4;
+    --muted: #7d8a9c;
+    --ok: #31c48d;
+    --warn: #f4b740;
+    --bad: #f6685e;
+    --canvas: radial-gradient(circle at 30% 20%, #141a26 0%, #0a0d12 72%);
+    --sel: #e8edf4;
+    --shadow: rgba(0, 0, 0, .55);
+    --chip-bg: rgba(17, 22, 31, .92);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #000000;
-  --panel: #1d1d1f;
-  --panel2: #2c2c2e;
-  --border: #424245;
-  --text: #f5f5f7;
-  --muted: #86868b;
-  --accent: #2997ff;
-  --ok: #30d158;
-  --warn: #ff9f0a;
-  --bad: #ff453a;
-  --canvas: radial-gradient(circle at 30% 20%, #1a1a1c 0%, #000000 72%);
-  --sel: #ffffff;
-  --shadow: rgba(0, 0, 0, .6);
-  --chip-bg: rgba(29, 29, 31, .92);
+  --bg: #0a0d12;
+  --panel: #11161f;
+  --panel2: #161d28;
+  --border: #2a3444;
+  --text: #e8edf4;
+  --muted: #7d8a9c;
+  --ok: #31c48d;
+  --warn: #f4b740;
+  --bad: #f6685e;
+  --canvas: radial-gradient(circle at 30% 20%, #141a26 0%, #0a0d12 72%);
+  --sel: #e8edf4;
+  --shadow: rgba(0, 0, 0, .55);
+  --chip-bg: rgba(17, 22, 31, .92);
 }
+
+/* Palette is one token — the accent — and it is deliberately independent of
+   light/dark, so switching one never silently switches the other. */
+:root[data-palette="kesar"] { --accent: #FC470D; }
+:root[data-palette="glow"] { --accent: #37c28e; }
+:root[data-palette="lilac"] { --accent: #a679ff; }
 
 * { box-sizing: border-box; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 var(--font-body);
-  letter-spacing: -.01em;
+  font: 15px/1.55 var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 button, input, select { font: inherit; color: inherit; letter-spacing: inherit; }
-code, pre { font-family: var(--font-mono); font-size: 12.5px; }
 .muted { color: var(--muted); }
+
+/* ── the typographic system, carried over from v1 ─────────────────────────── */
+
+h1, h2, h3, .brand strong, .tmain strong {
+  font-family: var(--font-display);
+  letter-spacing: -.01em;
+}
 h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+
+.btn, .tabs button, .seg button, .topactions button, .topactions select,
+.filebtn, .palette button, .menu-item, .cmditem, .trow, .iconbtn, .chip {
+  font-family: var(--font-body);
+  font-weight: var(--btn-weight);
+}
+
+/* The signature: a small label is uppercase mono at .09em, which reads as
+   instrumentation rather than as prose. Both of these tools are a readout. */
+.palette h4, .arrangetable th, .report th, .cmdgroup, .quality span,
+.tcat, .menu-label, .keys .krow kbd, .tourstep, .cmdfoot {
+  font-family: var(--label-font);
+  text-transform: var(--label-tt);
+  letter-spacing: var(--label-ls);
+  font-weight: var(--label-weight);
+}
+
+code, pre, .mono, .hash, .num, .quality b, .verdict .fixline b,
+.stat b, .zoomlevel { font-family: var(--font-mono); }
+code, pre { font-size: 12.5px; }
 
 .app { display: flex; flex-direction: column; height: 100vh; }
 
@@ -107,14 +154,19 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 .btn:disabled { opacity: .5; cursor: default; }
 
 /* ── the top bar ──────────────────────────────────────────────────────── */
+/* Wrapping is unconditional rather than behind a breakpoint. Every control
+   added to this bar used to move a magic number, and twice it was moved after
+   the page had already started scrolling sideways in the wild. Letting the row
+   wrap when it must retires the whole class of bug. */
 .top {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px 16px; flex-wrap: wrap;
   padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; align-items: baseline; gap: 10px; }
 .brand strong { font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
 .brand .tag { color: var(--muted); font-size: 13px; }
-.topactions { display: flex; align-items: center; gap: 8px; }
+.topactions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .topactions select, .topactions button {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
   border-radius: var(--r-btn); padding: 6px 15px; cursor: pointer; font-size: 14px;
@@ -132,6 +184,66 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 .filebtn:hover { border-color: var(--accent); color: var(--accent); }
 .filebtn input { display: none; }
 .hash { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+/* ── the menu bar, carried over from v1 ───────────────────────────────────── */
+.menuwrap { position: relative; }
+.menubtn {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--r-btn); padding: 6px 15px; cursor: pointer; font-size: 14px;
+  transition: border-color var(--d-short2) var(--e-standard), color var(--d-short2) var(--e-standard);
+  white-space: nowrap;
+}
+.menubtn:hover, .menubtn.on { border-color: var(--accent); color: var(--accent); }
+.menubtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.menu {
+  position: absolute; z-index: 90; top: calc(100% + 8px); left: 0;
+  min-width: 310px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-card);
+  box-shadow: var(--elev-3);
+  animation: menuIn var(--d-short2) var(--e-decelerate) both;
+}
+@keyframes menuIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; } }
+.menu-item {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%;
+  padding: 7px 9px; border: 0; border-radius: 9px; background: transparent;
+  color: inherit; text-align: left; font-size: 14px; cursor: pointer;
+}
+.menu-item:hover { background: color-mix(in srgb, var(--accent) var(--state-hover), transparent); }
+.menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.menu-item b { display: block; font-weight: 500; }
+.menu-check { width: 14px; color: var(--accent); flex: none; }
+.menu-note { display: block; color: var(--muted); font-size: 12px; line-height: 1.4; margin-top: 1px; }
+.menu-label {
+  padding: 10px 12px 4px; font-size: 10.5px; color: var(--muted);
+}
+.menu-sep { height: 1px; background: var(--border); margin: 6px 4px; }
+.swatch { width: 12px; height: 12px; border-radius: 4px; flex: none; margin-top: 4px; }
+
+/* ── step numbers ─────────────────────────────────────────────────────────
+   A diagram shows what connects to what and hides when. These put the
+   sequence back without needing a second diagram. */
+.stepnum circle { fill: var(--panel); stroke: var(--accent); stroke-width: 1.5; }
+.stepnum text {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  fill: var(--accent); paint-order: stroke;
+}
+
+/* ── screen-reader mode ───────────────────────────────────────────────────
+   Not a smaller version of the studio: a different one. No motion at all,
+   focus rings you cannot miss, and a reading of the diagram in the panel — an
+   SVG of boxes and curves has no reading order and no notion of downstream. */
+:root[data-sr] * { animation: none !important; transition: none !important; }
+:root[data-sr] :focus-visible { outline: 3px solid var(--accent) !important; outline-offset: 3px !important; }
+.texteq {
+  padding: 14px 16px; margin: 0 0 14px;
+  border: 1px solid var(--accent); border-radius: var(--r-card); background: var(--panel2);
+}
+.texteq h3 { font-size: 15px; }
+.texteq h4 { margin-top: 14px; }
+.texteq ol, .texteq ul { margin: 8px 0; padding-left: 22px; }
+.texteq li { font-size: 13.5px; line-height: 1.6; margin-bottom: 3px; }
+.texteq p { font-size: 13.5px; color: var(--muted); margin: 6px 0; }
 
 /* ── the verdict bar ───────────────────────────────────────────────────────
    The gate is the product, so it states its answer on load rather than waiting
@@ -195,11 +307,13 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 .warnings { margin-top: 14px; font-size: 12.5px; color: var(--muted); }
 .warnings p { margin: 7px 0; }
 
-.stage { overflow: auto; background: var(--canvas); }
-/* The floor keeps the canvas usable in a tall window; the `vh` term keeps it
-   from becoming a scrolling strip in a short one, where a fixed 420px is taller
-   than the room the layout actually has. */
-.canvas { width: 100%; height: 100%; min-height: min(420px, 30vh); }
+.stage { overflow: hidden; background: var(--canvas); min-height: 130px; }
+/* No minimum on the drawing surface. A `min-height` here is what made the
+   canvas taller than the stage that holds it, which is a scrollbar on the one
+   element nobody wants to scroll — and it is how the diagram ended up drawn
+   outside the strip the reader could see. The stage carries the floor instead,
+   and the SVG matches it exactly. */
+.canvas { width: 100%; height: 100%; }
 
 /* ── nodes ──────────────────────────────────────────────────────────────── */
 .node rect { fill: var(--chip-bg); stroke: var(--border); stroke-width: 1.5; }
@@ -402,7 +516,7 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
    a small screen. The breakpoint is set by the widest the bar's contents get,
    not by a device: every control added to it moves this number. */
 @media (max-width: 980px) {
-  .top { flex-wrap: wrap; row-gap: 10px; padding: 10px 14px; }
+  .top { padding: 10px 14px; }
   .brand { flex: 1 1 auto; min-width: 0; }
   .topactions { flex-wrap: wrap; width: 100%; }
   .topactions select { flex: 1 1 180px; min-width: 0; }
@@ -602,6 +716,8 @@ h3, h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 }
 .tourdots i.on { background: var(--accent); width: 16px; border-radius: 3px; }
 .tourstep { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* A long step must scroll inside the card rather than growing past the screen. */
+.tourcard { max-height: calc(100vh - 32px); overflow: auto; }
 
 .sheet {
   position: fixed; z-index: 95; left: 50%; top: 12vh; transform: translateX(-50%);

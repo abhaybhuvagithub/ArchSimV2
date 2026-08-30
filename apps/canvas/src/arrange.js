@@ -472,3 +472,68 @@ export function tidyIfWorse(before, after, opts = {}) {
     layout: best.name,
   }
 }
+
+/* ── request order ────────────────────────────────────────────────────────── */
+
+/**
+ * The connections, in the order a request travels them.
+ *
+ * A diagram shows what connects to what and hides *when*. Numbering the edges
+ * in request order puts the sequence back without needing a second diagram —
+ * which is what v1's ①②③ toggle does, and it is one of the few view options
+ * that changes what the picture means rather than how it looks.
+ *
+ * Breadth-first from every source, so siblings are numbered together: a gateway
+ * that fans out to three services gives them 2, 3 and 4 rather than numbering
+ * one whole branch before starting the next. That matches how someone reads a
+ * fan-out, and it is why this is not a topological sort.
+ */
+export function requestOrder(ir) {
+  const { out } = adjacency(ir)
+  const edgesFrom = new Map()
+  for (const e of ir.edges) {
+    if (!edgesFrom.has(e.from)) edgesFrom.set(e.from, [])
+    edgesFrom.get(e.from).push(e)
+  }
+  // Within a fan-out, order by the target's vertical position, so the numbers
+  // read top to bottom the way the eye does.
+  const byId = new Map(ir.nodes.map((n) => [n.id, n]))
+  for (const list of edgesFrom.values()) {
+    list.sort((a, b) => (at(byId.get(a.to) || {}).y - at(byId.get(b.to) || {}).y) || String(a.to).localeCompare(String(b.to)))
+  }
+
+  const sources = ir.nodes.filter((n) => n.capacity?.source)
+  const roots = sources.length
+    ? sources
+    // No declared source: start from anything nothing points at, and failing
+    // that from the leftmost component, so a cycle still gets numbered.
+    : ir.nodes.filter((n) => !ir.edges.some((e) => e.to === n.id))
+      .concat(ir.nodes.slice().sort((a, b) => at(a).x - at(b).x)).slice(0, 1)
+
+  const order = []
+  const seenEdge = new Set()
+  const queue = roots.map((n) => n.id)
+  const seenNode = new Set(queue)
+  while (queue.length) {
+    const id = queue.shift()
+    for (const e of edgesFrom.get(id) || []) {
+      const key = e.id || `${e.from}->${e.to}`
+      if (seenEdge.has(key)) continue
+      seenEdge.add(key)
+      order.push(e)
+      if (!seenNode.has(e.to)) { seenNode.add(e.to); queue.push(e.to) }
+    }
+  }
+  // An edge unreachable from any root is still a connection, and leaving it
+  // unnumbered while its neighbours are numbered is worse than numbering it
+  // last.
+  for (const e of ir.edges) {
+    const key = e.id || `${e.from}->${e.to}`
+    if (!seenEdge.has(key)) { seenEdge.add(key); order.push(e) }
+  }
+  return order
+}
+
+/** `1 → ①`, up to 20; past that the plain number, because ㉑ is not legible. */
+export const circled = (n) =>
+  (n >= 1 && n <= 20 ? String.fromCharCode(0x2460 + n - 1) : String(n))

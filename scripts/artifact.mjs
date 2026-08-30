@@ -24,6 +24,14 @@ const script = readFileSync(join(dist, 'assets', js), 'utf8').replace(/<\/script
 writeFileSync(out, `<title>ArchSim Studio</title>
 <meta name="description" content="Judge an infrastructure change before it merges: one IR projected onto a canvas, the Terraform it came from, and production." />
 
+<!-- Google Fonts is the one external host the artifact CSP admits, and the
+     typography is half of what makes this look like the same product as
+     ArchSim 1.x. Every family has a real fallback stack in the CSS, so the page
+     is legible before these arrive and on a machine that never gets them. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" />
+
 <style>
 ${style}
 </style>

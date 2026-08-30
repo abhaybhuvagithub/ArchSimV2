@@ -13,7 +13,8 @@ import Canvas, { Minimap } from './Canvas.jsx'
 import Inspector from './Inspector.jsx'
 import { SimulatePanel, GatePanel, DesPanel, TwinPanel, CodePanel } from './Panels.jsx'
 import ArrangePanel from './ArrangePanel.jsx'
-import { tidyIfWorse } from './arrange.js'
+import { tidyIfWorse, rankLayouts, requestOrder } from './arrange.js'
+import ViewMenu, { TextEquivalent, PALETTES } from './ViewMenu.jsx'
 import { autoLayout } from './layout.js'
 import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_CFN, EXAMPLE_SLOS } from './examples.js'
 import Verdict from './Verdict.jsx'
@@ -68,12 +69,15 @@ export default function App() {
   const [multi, setMulti] = useState([])
   const [search, setSearch] = useState('')
   const [theme, setTheme] = useState(persist.initialTheme)
-  const [palette, setPalette] = useState(false)
+  const [cmdOpen, setCmdOpen] = useState(false)
   const [dropping, setDropping] = useState(false)
   const [gallery, setGallery] = useState(false)
   // Tidying after a drop is on by default and remembered, because the people who
   // hate it hate it immediately and should be able to turn it off once.
   const [autoTidy, setAutoTidy] = useState(() => persist.read('autoTidy', true))
+  const [stepNumbers, setStepNumbers] = useState(() => persist.read('stepNumbers', false))
+  const [palette, setPaletteState] = useState(() => persist.read('palette', 'kesar'))
+  const [srMode, setSrModeState] = useState(() => persist.read('srMode', false))
   const [keysOpen, setKeysOpen] = useState(false)
   const [tourStep, setTourStep] = useState(null)
   const [restore, setRestore] = useState(null)
@@ -236,6 +240,16 @@ export default function App() {
     }
   }, [ir, update, toast, undo, autoTidy])
 
+  /** The View menu's Arrange: the best-scoring layout, applied in one click. */
+  const arrangeBest = useCallback(() => {
+    const best = rankLayouts(ir)[0]
+    if (best.id === 'current') return toast('Already the best arrangement of the five — nothing to gain by moving it.')
+    update(best.result)
+    setTimeout(() => canvasApi.current?.fit(), 60)
+    toast(`Arranged: ${best.name.toLowerCase()}. Open the Arrange tab to see the other four scored against it.`,
+      { action: undo, actionLabel: 'Undo' })
+  }, [ir, update, toast, undo])
+
   /** The same rules, applied to everything already stranded. */
   /**
    * Open a template. It replaces the canvas rather than merging into it — two
@@ -256,6 +270,21 @@ export default function App() {
     toast(`Opened ${t.name} — ${t.components} components at ${t.rps.toLocaleString()} rps. The gate is already running against its own SLOs.`,
       { action: undo, actionLabel: 'Undo' })
   }, [update, toast, undo])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-palette', palette)
+    persist.write('palette', palette)
+  }, [palette])
+
+  useEffect(() => {
+    // A single attribute, so the whole stylesheet can respond: no motion,
+    // stronger focus, and the text equivalent revealed. Screen-reader mode is a
+    // way of viewing the design, not a preference buried in a settings panel.
+    document.documentElement.toggleAttribute('data-sr', !!srMode)
+    persist.write('srMode', srMode)
+  }, [srMode])
+
+  useEffect(() => { persist.write('stepNumbers', stepNumbers) }, [stepNumbers])
 
   const strandedCount = useMemo(() => orphans(ir).length, [ir])
 
@@ -383,7 +412,7 @@ export default function App() {
   const startTour = useCallback(() => setTourStep(0), [])
 
   const tourSteps = useMemo(
-    () => buildTour({ setTab, switchVariant, setSearch, canvasApi }),
+    () => buildTour({ setTab, switchVariant, setSearch, canvasApi, setStepNumbers, setGallery }),
     [switchVariant],
   )
 
@@ -412,7 +441,12 @@ export default function App() {
     { id: 'zout', group: 'Canvas', title: 'Zoom out', keys: '−', run: () => canvasApi.current?.zoomOut() },
     { id: 'find', group: 'Canvas', title: 'Search components', keys: '/', run: () => searchRef.current?.focus() },
     { id: 'templates', group: 'Start', title: 'Browse 100 architecture templates', hint: 'L', keys: 'L', run: () => setGallery(true) },
-    { id: 'arrange', group: 'Edit', title: 'Arrange the canvas', hint: 'Five layouts, scored', keys: 'A', run: () => setTab('Arrange') },
+    { id: 'view-arrange', group: 'View', title: 'Arrange the canvas now', hint: 'The best-scoring layout, applied', run: arrangeBest },
+    { id: 'view-fit', group: 'View', title: 'Fit the diagram in view', keys: 'F', run: () => canvasApi.current?.fit() },
+    { id: 'view-steps', group: 'View', title: `${stepNumbers ? 'Hide' : 'Show'} step numbers`, hint: 'Number the connections in request order', run: () => setStepNumbers((v) => !v) },
+    { id: 'view-sr', group: 'View', title: `${srMode ? 'Leave' : 'Enter'} screen-reader mode`, hint: 'Text equivalent of the diagram, stronger focus, no motion', run: () => setSrModeState((v) => !v) },
+    ...PALETTES.map((pal) => ({ id: `palette-${pal.id}`, group: 'View', title: `Palette: ${pal.name}`, run: () => setPaletteState(pal.id) })),
+    { id: 'arrange', group: 'Edit', title: 'Open the Arrange tab', hint: 'Five layouts, scored', keys: 'A', run: () => setTab('Arrange') },
     { id: 'connect', group: 'Edit', title: 'Connect every unconnected component', hint: 'Uses the wiring rules — platform components stay off the request path', keys: 'C', run: connectOrphans },
     { id: 'undo', group: 'Edit', title: 'Undo', keys: '⌘Z', run: undo },
     { id: 'redo', group: 'Edit', title: 'Redo', keys: '⇧⌘Z', run: redo },
@@ -425,7 +459,7 @@ export default function App() {
     { id: 'x-link', group: 'Export', title: 'Copy a share link', run: () => doExport('link') },
     ...['lb', 'gateway', 'app', 'micro', 'worker', 'cache', 'sql', 'nosql', 'queue', 'kafka', 'blob', 'search', 'llm']
       .map((k) => ({ id: `add-${k}`, group: 'Add a component', title: k, run: () => addNode(k) })),
-  ], [startTour, switchVariant, twin, connectTwin, undo, redo, cycleTheme, doExport, addNode, connectOrphans])
+  ], [startTour, switchVariant, twin, connectTwin, undo, redo, cycleTheme, doExport, addNode, connectOrphans, arrangeBest, stepNumbers, srMode])
 
   // ── keyboard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -433,7 +467,7 @@ export default function App() {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable
       const mod = e.metaKey || e.ctrlKey
 
-      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); return }
+      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmdOpen((o) => !o); return }
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault()
         e.shiftKey ? redo() : undo()
@@ -442,7 +476,7 @@ export default function App() {
       if (e.key === 'Escape') {
         // One layer at a time, topmost first.
         if (gallery) return setGallery(false)
-        if (palette) return setPalette(false)
+        if (cmdOpen) return setCmdOpen(false)
         if (keysOpen) return setKeysOpen(false)
         if (tourStep !== null) return setTourStep(null)
         if (search) return setSearch('')
@@ -466,7 +500,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [gallery, palette, keysOpen, tourStep, search, undo, redo, comparable, variant, switchVariant, cycleTheme, startTour, selected, multi, onDelete, connectOrphans])
+  }, [gallery, cmdOpen, keysOpen, tourStep, search, undo, redo, comparable, variant, switchVariant, cycleTheme, startTour, selected, multi, onDelete, connectOrphans])
 
   const viewRect = useMemo(() => {
     const el = document.querySelector('.stage')
@@ -483,6 +517,19 @@ export default function App() {
           <span className="tag">digital twin studio</span>
         </div>
         <div className="topactions">
+          <ViewMenu
+            onArrange={arrangeBest}
+            onFit={() => canvasApi.current?.fit()}
+            stepNumbers={stepNumbers}
+            setStepNumbers={setStepNumbers}
+            theme={theme}
+            cycleTheme={cycleTheme}
+            palette={palette}
+            setPalette={setPaletteState}
+            srMode={srMode}
+            setSrMode={setSrModeState}
+          />
+          <button id="guide-btn" className="menubtn" onClick={startTour} title="Replay the guided tour — G">◷ Guide/Tour</button>
           <button id="templates-btn" onClick={() => setGallery(true)} title="Browse 100 architecture templates — L">Templates</button>
           <select onChange={(e) => { if (e.target.value) { importText(
               e.target.value === 'plan' ? EXAMPLE_PLAN
@@ -506,7 +553,7 @@ export default function App() {
             }} />
           </label>
           <button onClick={connectTwin} className={twin ? 'live' : ''}>{twin ? '● live' : 'Connect telemetry'}</button>
-          <button className="iconbtn" onClick={() => setPalette(true)} title="Command palette — ⌘K" aria-label="Open the command palette">⌘</button>
+          <button className="iconbtn" onClick={() => setCmdOpen(true)} title="Command palette — ⌘K" aria-label="Open the command palette">⌘</button>
           <button className="iconbtn" onClick={cycleTheme} title={`Theme: ${theme}. Press T to cycle.`} aria-label={`Theme: ${theme}. Cycle theme`}>
             {theme === 'dark' ? '◐' : theme === 'light' ? '☀' : '◑'}
           </button>
@@ -593,7 +640,7 @@ export default function App() {
           }}
         >
           <Canvas ref={canvasApi} ir={ir} frame={frame} ghosts={ghosts} selected={selected} multi={multi}
-                  search={search} changed={changed}
+                  search={search} changed={changed} stepNumbers={stepNumbers}
                   onSelect={onSelectNode} onMove={onMove} onConnect={onConnect}
                   onViewChange={setCanvasView} />
 
@@ -624,6 +671,7 @@ export default function App() {
         <nav className="tabs">
           {TABS.map((t) => <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t}</button>)}
         </nav>
+        {srMode && <TextEquivalent ir={ir} order={requestOrder(ir)} />}
         {tab === 'Arrange' && (
           <ArrangePanel
             ir={ir}
@@ -645,7 +693,7 @@ export default function App() {
       </div>
 
       <Templates open={gallery} onClose={() => setGallery(false)} onPick={openTemplate} />
-      <CommandPalette open={palette} onClose={() => setPalette(false)} commands={commands} />
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
       <Shortcuts open={keysOpen} onClose={() => setKeysOpen(false)} rows={SHORTCUTS} />
       {tourStep !== null && (
         <Tour steps={tourSteps} index={tourStep} onIndex={setTourStep} onClose={() => setTourStep(null)} />

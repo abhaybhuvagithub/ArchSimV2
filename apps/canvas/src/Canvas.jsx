@@ -12,6 +12,7 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { kindGlyph, kindName } from '@archsim/core'
 import { edgePath } from './layout.js'
+import { requestOrder, circled } from './arrange.js'
 
 const W = 150
 const H = 44
@@ -20,6 +21,7 @@ const MAX_Z = 2.6
 
 const Canvas = forwardRef(function Canvas({
   ir, frame, ghosts = [], selected, multi = [], search = '', changed = null,
+  stepNumbers = false,
   onSelect, onMove, onConnect, onViewChange,
 }, apiRef) {
   const svgRef = useRef(null)
@@ -32,6 +34,15 @@ const Canvas = forwardRef(function Canvas({
   // automatic refit would be the tool taking the wheel back.
   const touched = useRef(false)
   const pos = (n) => n.layout || { x: 40, y: 40 }
+
+  // The connections in the order a request travels them, so the ①②③ toggle can
+  // put the sequence back into a picture that otherwise only shows topology.
+  const stepOf = useMemo(() => {
+    if (!stepNumbers) return null
+    const map = new Map()
+    requestOrder(ir).forEach((e, i) => map.set(e.id || `${e.from}->${e.to}`, i + 1))
+    return map
+  }, [ir, stepNumbers])
 
   const content = useMemo(() => {
     const xs = ir.nodes.map((n) => pos(n).x)
@@ -227,6 +238,7 @@ const Canvas = forwardRef(function Canvas({
           const obs = frame?.edges?.[e.id]
           const conf = e.confidence || 'high'
           const dim = search.trim() && !(matches(a) || matches(b))
+          const step = stepOf?.get(e.id || `${e.from}->${e.to}`)
           return (
             <g key={e.id} className={`edge conf-${conf} sem-${e.callSemantics}`} opacity={dim ? 0.15 : 1}>
               <path d={edgePath(pos(a), pos(b), W, H)} markerEnd="url(#arrow)"
@@ -234,6 +246,15 @@ const Canvas = forwardRef(function Canvas({
               <title>
                 {`${a.label} → ${b.label}\n${e.callSemantics}${e.protocol ? ` over ${e.protocol}` : ''}\nconfidence: ${conf}${e.attrs?.reason ? `\nwhy: ${e.attrs.reason}` : ''}${conf !== 'high' ? '\n\nDashed because ArchSim inferred this rather than being told. Confirm it and the confidence is written back into the code.' : ''}`}
               </title>
+              {step && (
+                // Drawn at the midpoint of the chord rather than of the curve:
+                // close enough on these arcs, and it does not have to be
+                // recomputed when the drawing style changes.
+                <g className="stepnum" transform={`translate(${(pos(a).x + pos(b).x) / 2 + W / 2}, ${(pos(a).y + pos(b).y) / 2 + H / 2})`}>
+                  <circle r="10" />
+                  <text textAnchor="middle" dominantBaseline="central">{step}</text>
+                </g>
+              )}
             </g>
           )
         })}

@@ -55,8 +55,10 @@ import { TEMPLATES, CATEGORIES, template, buildTemplate, searchTemplates, TEMPLA
 
 import {
   layoutQuality, layoutScore, rankLayouts, LAYOUTS, layered, layeredTidy, force, grid, vertical,
-  align, distribute, snapAll, tighten, ALIGNMENTS, tidyIfWorse,
+  align, distribute, snapAll, tighten, ALIGNMENTS, tidyIfWorse, requestOrder, circled,
 } from '../apps/canvas/src/arrange.js'
+import { buildTour, SHORTCUTS } from '../apps/canvas/src/tour.js'
+import { PALETTES } from '../apps/canvas/src/persist.js'
 
 import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
 
@@ -1878,6 +1880,118 @@ check('a drop that hurts nothing measurable is never given a reason', () => {
   const out = tidyIfWorse(clean, clean)
   return out.tidied === false && out.reason === null && out.ir === clean
 })
+check('request order numbers every connection exactly once', () => {
+  const order = requestOrder(messy)
+  const keys = order.map((e) => e.id || `${e.from}->${e.to}`)
+  return keys.length === messy.edges.length && new Set(keys).size === keys.length
+})
+check('request order starts at the source', () => {
+  const first = requestOrder(messy)[0]
+  return messy.nodes.find((n) => n.id === first.from)?.capacity?.source === true
+})
+check('request order is breadth-first, so a fan-out is numbered together', () => {
+  const fan = normalizeIR({
+    ...createIR({ name: 'fan' }),
+    nodes: [
+      irNode({ id: 'c', kind: 'client', label: 'c', layout: { x: 0, y: 100 } }, capacityFor),
+      irNode({ id: 'g', kind: 'gateway', label: 'g', layout: { x: 200, y: 100 } }, capacityFor),
+      irNode({ id: 'a', kind: 'micro', label: 'a', layout: { x: 400, y: 0 } }, capacityFor),
+      irNode({ id: 'b', kind: 'micro', label: 'b', layout: { x: 400, y: 200 } }, capacityFor),
+      irNode({ id: 'db', kind: 'sql', label: 'db', layout: { x: 600, y: 0 } }, capacityFor),
+    ],
+    edges: [irEdge({ from: 'c', to: 'g' }), irEdge({ from: 'g', to: 'a' }), irEdge({ from: 'g', to: 'b' }), irEdge({ from: 'a', to: 'db' })],
+  })
+  // Both branches of the fan-out come before anything downstream of either.
+  const seq = requestOrder(fan).map((e) => `${e.from}>${e.to}`)
+  return seq.indexOf('g>b') < seq.indexOf('a>db')
+})
+check('a fan-out is numbered top to bottom, the way the eye reads it', () => {
+  const fan = normalizeIR({
+    ...createIR({ name: 'fan2' }),
+    nodes: [
+      irNode({ id: 'c', kind: 'client', label: 'c', layout: { x: 0, y: 100 } }, capacityFor),
+      irNode({ id: 'low', kind: 'micro', label: 'low', layout: { x: 300, y: 400 } }, capacityFor),
+      irNode({ id: 'high', kind: 'micro', label: 'high', layout: { x: 300, y: 0 } }, capacityFor),
+    ],
+    edges: [irEdge({ from: 'c', to: 'low' }), irEdge({ from: 'c', to: 'high' })],
+  })
+  return requestOrder(fan)[0].to === 'high'
+})
+check('a design with no source is still numbered rather than left blank', () => {
+  const ring = normalizeIR({
+    ...createIR({ name: 'ring' }),
+    nodes: ['a', 'b'].map((id) => irNode({ id, kind: 'micro', label: id }, capacityFor)),
+    edges: [irEdge({ from: 'a', to: 'b' }), irEdge({ from: 'b', to: 'a' })],
+  })
+  return requestOrder(ring).length === 2
+})
+check('every template numbers all of its connections', () =>
+  TEMPLATES.every((t) => { const ir = template(t.id); return requestOrder(ir).length === ir.edges.length }))
+check('step glyphs are circled up to 20 and plain past it', () =>
+  circled(1) === '①' && circled(20) === '⑳' && circled(21) === '21')
+
+// ── the studio's chrome ─────────────────────────────────────────────────────
+section('Chrome: fonts, the View menu, the tour')
+
+const css = fs.readFileSync(path.join(ROOT, 'apps/canvas/src/styles.css'), 'utf8')
+
+check('the three families are the ones ArchSim 1.x uses', () =>
+  /--font-body:\s*'IBM Plex Sans'/.test(css)
+  && /--font-display:\s*'Space Grotesk'/.test(css)
+  && /--font-mono:\s*'IBM Plex Mono'/.test(css))
+check('every family declares a real fallback stack', () => {
+  for (const m of css.matchAll(/--font-(body|display|mono):([^;]+);/g)) {
+    const stack = m[2].split(',').map((x) => x.trim()).filter(Boolean)
+    if (stack.length < 3) throw new Error(`--font-${m[1]} has ${stack.length} families`)
+    if (!/sans-serif|monospace|system-ui/.test(m[2])) throw new Error(`--font-${m[1]} has no generic family`)
+  }
+  return true
+})
+check('the label treatment is v1\'s: uppercase mono at .09em', () =>
+  /--label-font:\s*var\(--font-mono\)/.test(css) && /--label-tt:\s*uppercase/.test(css) && /--label-ls:\s*\.09em/.test(css))
+check('both delivery paths load the webfonts', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'apps/canvas/index.html'), 'utf8')
+  const artifact = fs.readFileSync(path.join(ROOT, 'scripts/artifact.mjs'), 'utf8')
+  const wanted = /IBM\+Plex\+Sans.*IBM\+Plex\+Mono.*Space\+Grotesk/
+  return wanted.test(html) && wanted.test(artifact)
+})
+check('the palettes are the three v1 offers', () =>
+  PALETTES.map((p) => p.id).join() === 'kesar,glow,lilac'
+  && PALETTES.every((p) => new RegExp(`\\[data-palette="${p.id}"\\]\\s*{\\s*--accent:\\s*${p.swatch}`, 'i').test(css)))
+check('a palette changes the accent and nothing else', () => {
+  // Every palette block declares exactly one token. A palette that quietly
+  // moved the background would make light and dark a lottery.
+  for (const m of css.matchAll(/\[data-palette="[a-z]+"\]\s*{([^}]*)}/g)) {
+    const decls = m[1].split(';').map((d) => d.trim()).filter(Boolean)
+    if (decls.length !== 1 || !decls[0].startsWith('--accent')) throw new Error(`palette block declares ${decls.join('; ')}`)
+  }
+  return true
+})
+check('screen-reader mode turns off motion and strengthens focus', () =>
+  /:root\[data-sr\] \* \{[^}]*animation: none !important/.test(css)
+  && /:root\[data-sr\] :focus-visible \{[^}]*outline: 3px/.test(css))
+
+const tour = buildTour({ setTab: () => {}, switchVariant: () => {}, setSearch: () => {}, canvasApi: { current: null } })
+check('the tour covers the studio rather than a subset of it', () => tour.length >= 15)
+check('every tour step names a real target', () =>
+  tour.every((t) => !t.target || /^[.#][\w-]/.test(t.target)))
+check('no two tour steps say the same thing', () =>
+  new Set(tour.map((t) => t.title)).size === tour.length)
+check('every tour step has a body worth reading', () =>
+  tour.every((t) => t.title && t.body && t.body.length > 60))
+check('the keyboard map lists every bare letter the app binds', () => {
+  // Bare letters only. A shortcut behind ⌘ is listed as ⌘K, and matching the
+  // modifier branches too would report every one of them as missing.
+  const app = fs.readFileSync(path.join(ROOT, 'apps/canvas/src/App.jsx'), 'utf8')
+  const bound = app.split('\n')
+    .filter((line) => !/mod &&/.test(line))
+    .flatMap((line) => [...line.matchAll(/e\.key\.toLowerCase\(\) === '([a-z])'/g)].map((m) => m[1].toUpperCase()))
+  const listed = SHORTCUTS.map((x) => x.keys.toUpperCase())
+  const missing = [...new Set(bound)].filter((k) => !listed.includes(k))
+  if (missing.length) throw new Error(`bound but not listed: ${missing.join(', ')}`)
+  return true
+})
+
 check('the score weights overlaps above crossings above ink', () =>
   layoutScore({ crossings: 0, overlaps: 1, backward: 0, length: 0 }) >
   layoutScore({ crossings: 2, overlaps: 0, backward: 0, length: 0 }) &&

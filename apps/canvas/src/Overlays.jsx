@@ -169,6 +169,11 @@ export function Tour({ steps, index, onIndex, onClose }) {
     const el = step.target ? document.querySelector(step.target) : null
     if (!el) { setRect(null); return }
     const r = el.getBoundingClientRect()
+    // A target scrolled out of the viewport cannot be spotlit, and following it
+    // off-screen takes the card with it. Centre instead: no spotlight is better
+    // than a spotlight on something the reader cannot see.
+    const visible = r.bottom > 40 && r.top < window.innerHeight - 40 && r.right > 0 && r.left < window.innerWidth
+    if (!visible || (!r.width && !r.height)) { setRect(null); return }
     const pad = step.pad ?? 8
     setRect({ top: r.top - pad, left: r.left - pad, width: r.width + pad * 2, height: r.height + pad * 2 })
   }, [step])
@@ -187,14 +192,21 @@ export function Tour({ steps, index, onIndex, onClose }) {
     if (!card) return
     const cw = card.offsetWidth, ch = card.offsetHeight
     const vw = window.innerWidth, vh = window.innerHeight
-    if (!rect) { setCardPos({ top: Math.max(16, vh / 2 - ch / 2), left: Math.max(16, vw / 2 - cw / 2) }); return }
+    // Clamp last, always. Every branch below is a *preference*; this is the
+    // guarantee. Without it a tall card beside a target near the bottom lands
+    // at a negative top and the reader is looking at a step they cannot read —
+    // which is exactly how a longer tour breaks a placement that worked when
+    // every step was two sentences.
+    const clamp = (t, l) => ({
+      top: Math.max(16, Math.min(t, Math.max(16, vh - ch - 16))),
+      left: Math.max(16, Math.min(l, Math.max(16, vw - cw - 16))),
+    })
+    if (!rect) { setCardPos(clamp(vh / 2 - ch / 2, vw / 2 - cw / 2)); return }
     // Prefer below, then above, then beside — whichever fits without clipping.
     let top = rect.top + rect.height + 14
     if (top + ch > vh - 16) top = rect.top - ch - 14
-    if (top < 16) top = Math.min(vh - ch - 16, Math.max(16, rect.top))
-    let left = rect.left + rect.width / 2 - cw / 2
-    left = Math.min(vw - cw - 16, Math.max(16, left))
-    setCardPos({ top, left })
+    if (top < 16) top = rect.top
+    setCardPos(clamp(top, rect.left + rect.width / 2 - cw / 2))
   }, [rect, index])
 
   useEffect(() => {

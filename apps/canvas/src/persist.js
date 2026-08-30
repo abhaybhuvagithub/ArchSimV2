@@ -30,6 +30,25 @@ export function remove(key) {
 
 export const THEMES = ['system', 'light', 'dark']
 
+/**
+ * The three palettes ArchSim 1.x offers, so someone who has a colour there can
+ * keep it here. Palette lives beside theme rather than inside the menu that
+ * shows it, because the check suite has to read it and a `.jsx` file is not
+ * importable from a plain Node script.
+ */
+export const PALETTES = [
+  { id: 'kesar', name: 'Kesar', swatch: '#FC470D', note: 'Primary' },
+  { id: 'glow', name: 'Glow', swatch: '#37c28e' },
+  { id: 'lilac', name: 'Lilac', swatch: '#a679ff' },
+]
+
+export function applyPalette(id) {
+  const chosen = PALETTES.some((p) => p.id === id) ? id : PALETTES[0].id
+  document.documentElement.setAttribute('data-palette', chosen)
+  write('palette', chosen)
+  return chosen
+}
+
 export function applyTheme(theme) {
   const root = document.documentElement
   if (theme === 'system') root.removeAttribute('data-theme')
