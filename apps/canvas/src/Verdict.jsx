@@ -14,7 +14,7 @@ const WORD = {
   fail: 'violation',
 }
 
-export default function Verdict({ busy, result, base, variant, onVariant, comparable }) {
+export default function Verdict({ busy, result, base, variant, onVariant, comparable, pristine = false }) {
   const v = busy ? 'busy' : result?.verdict || 'busy'
   const failed = result?.evaluation?.failed?.length || 0
   const risky = result?.evaluation?.risky?.length || 0
@@ -37,10 +37,19 @@ export default function Verdict({ busy, result, base, variant, onVariant, compar
         {headline}
       </span>
 
+      {/* On an untouched example the count is a demonstration, not a report
+          card. Saying so is the difference between "you have failed" and
+          "here is the thing this tool is for". */}
+      {!busy && pristine && v !== 'pass' && (
+        <span className="fixline intro">
+          This example is under-provisioned on purpose — finding that is the point.
+        </span>
+      )}
+
       {!busy && fix && (
         <span className="fixline">
-          Cheapest fix: {fix} — <b>{money(result.quickFix.costDelta)}/mo</b>
-          {result.quickFix.fullyResolved ? ', which restores every gate.' : '.'}
+          {pristine ? 'It would cost' : 'Cheapest fix:'} {fix} — <b>{money(result.quickFix.costDelta)}/mo</b>
+          {result.quickFix.fullyResolved ? ' to put right.' : '.'}
         </span>
       )}
 

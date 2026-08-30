@@ -53,7 +53,7 @@ export default function Palette({ onAdd, counts, warnings, stranded, onConnectSt
       <p className="palettehint">
         {searching
           ? `${shown} of ${total}. Click to place, or drag onto the canvas.`
-          : 'Click to place, or drag onto the canvas. Each carries real capacity figures — that is what makes the simulation mean anything.'}
+          : 'Click to place, or drag onto the canvas.'}
       </p>
 
       {groups.map((g) => {

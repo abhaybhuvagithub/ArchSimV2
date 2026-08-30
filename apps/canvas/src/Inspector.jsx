@@ -14,11 +14,16 @@ export default function Inspector({ ir, nodeId, onChange, onDelete, drift, onCal
   if (!node) {
     return (
       <div className="inspector empty">
+        {/* This is what someone reads before they have clicked anything, which
+            makes it the worst place in the app for internal vocabulary. It used
+            to open with "a projection of the IR — the same document the CLI
+            gates and the compiler writes back into Terraform", which is four
+            pieces of jargon in one sentence. */}
         <h3>Nothing selected</h3>
-        <p>Click a component to inspect it. Shift-drag from one component to another to connect them.</p>
+        <p>Click any box on the diagram to see what it is and change it.</p>
         <p className="muted">
-          Everything on this canvas is a projection of the IR — the same document the CLI gates and the compiler
-          writes back into Terraform. Edit here, then look at the <strong>Code</strong> tab to see the patch it produces.
+          The boxes are the parts of your system. The lines are calls between them. Change a number here and
+          everything below updates — how fast it is, what it costs, and whether it still holds up.
         </p>
       </div>
     )

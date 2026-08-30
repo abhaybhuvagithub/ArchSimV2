@@ -2764,6 +2764,48 @@ check('the node keeps a short accessible name, and the edge keeps its tooltip', 
   return true
 })
 
+check('the studio does not open on a wall of JSON', () => {
+  // Tri-view was default-on for one commit, which put 495 lines of the IR
+  // where the diagram should be. It is the right thing to have and the wrong
+  // thing to greet someone with.
+  const app = read('apps/canvas/src/App.jsx')
+  if (!/persist\.read\('triView', false\)/.test(app)) throw new Error('tri-view is on by default again')
+  return true
+})
+
+check('an untouched example explains itself before it accuses', () => {
+  // The shipped example fails on purpose. Opening with a red count of
+  // violations a first-time reader did not cause reads as a report card.
+  const v = read('apps/canvas/src/Verdict.jsx')
+  if (!/pristine/.test(v)) throw new Error('the verdict cannot tell a fresh example from the reader’s own work')
+  if (!/on purpose/.test(v)) throw new Error('nothing says the example is meant to fail')
+  return true
+})
+
+check('the empty inspector speaks plainly', () => {
+  // It is what someone reads before clicking anything, which makes it the worst
+  // place in the app for internal vocabulary. It used to say "a projection of
+  // the IR — the same document the CLI gates and the compiler writes back into
+  // Terraform": four pieces of jargon in one sentence.
+  const src = read('apps/canvas/src/Inspector.jsx')
+  const empty = src.slice(src.indexOf('Nothing selected'), src.indexOf('Nothing selected') + 700)
+  for (const word of ['projection of the IR', 'CLI gates', 'compiler writes back']) {
+    if (empty.includes(word)) throw new Error(`the empty state still says "${word}"`)
+  }
+  return /boxes are the parts of your system/.test(empty)
+})
+
+check('no tab label is an unexplained acronym', () => {
+  // "Chaos (DES)" taught nobody what DES meant; a tab label is the wrong place
+  // to introduce a term. It is in the glossary instead.
+  const app = read('apps/canvas/src/App.jsx')
+  const tabs = app.match(/const TABS = \[([^\]]*)\]/)[1].split(',').map((t) => t.trim().replace(/'/g, ''))
+  for (const t of tabs) {
+    if (/\([A-Z]{2,}\)/.test(t)) throw new Error(`tab "${t}" carries a bare acronym`)
+  }
+  return tabs.length > 0
+})
+
 // ────────────────────────────────────────────────────────────────────────────
 await Promise.all(pending)
 process.stdout.write('\n\n')

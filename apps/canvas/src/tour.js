@@ -76,7 +76,7 @@ export function buildTour({ setTab, switchVariant, setSearch, canvasApi, setStep
       title: 'Time, not just steady state',
       body: 'The discrete-event engine answers what the steady-state model cannot: retry storms that feed back, breakers that flap, and a service that saturates at unchanged traffic because its workers are all waiting on a slow dependency.',
       target: '.tabs',
-      before: () => setTab('Chaos (DES)'),
+      before: () => setTab('Chaos'),
     },
     {
       title: 'The twin, and where the model is wrong',

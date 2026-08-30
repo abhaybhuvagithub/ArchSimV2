@@ -30,7 +30,7 @@ import { buildTour, SHORTCUTS } from './tour.js'
 import * as persist from './persist.js'
 import { downloadIR, saveFile, gateMarkdown, copyText, exportSVG, exportPNG, shareLink, readShareLink } from './exporters.js'
 
-const TABS = ['Simulate', 'Gate', 'Chaos (DES)', 'Twin', 'Arrange', 'Code', 'Acronyms']
+const TABS = ['Simulate', 'Gate', 'Chaos', 'Twin', 'Arrange', 'Code', 'Acronyms']
 
 /** A proposal from the wiring rules, as an IR edge that draws dashed. */
 const asEdge = (e) => ({
@@ -81,10 +81,11 @@ export default function App() {
   const [stepNumbers, setStepNumbers] = useState(() => persist.read('stepNumbers', false))
   const [palette, setPaletteState] = useState(() => persist.read('palette', 'kesar'))
   const [srMode, setSrModeState] = useState(() => persist.read('srMode', false))
-  // Tri-view puts the IR and the twin beside the canvas. It is a mode rather
-  // than a replacement: three columns is the right shape for reading a design
-  // and the wrong one for drawing it, and the canvas loses a third of its width.
-  const [triView, setTriViewState] = useState(() => persist.read('triView', true))
+  // Tri-view puts the IR beside the canvas. Off by default: 500 lines of JSON
+  // is the right thing to have available and the wrong thing to greet someone
+  // with, and it was taking a third of the screen from the diagram — the one
+  // part of this that explains itself.
+  const [triView, setTriViewState] = useState(() => persist.read('triView', false))
   const setTriView = (v) => { setTriViewState(v); persist.write('triView', v) }
   // Shared between the canvas and the IR view, in both directions.
   const [hovered, setHovered] = useState(null)
@@ -174,7 +175,14 @@ export default function App() {
   }, [ir, variant, comparable])
 
   // ── IR editing ────────────────────────────────────────────────────────────
+  // Whether anything on screen is the reader's own doing yet. Used only to
+  // change how the verdict introduces itself: the shipped example fails on
+  // purpose, and greeting a first-time visitor with a red count of violations
+  // they did not cause reads as an accusation rather than a demonstration.
+  const [touched, setTouched] = useState(false)
+
   const update = useCallback((next) => {
+    setTouched(true)
     setIr((prev) => { pushHistory(prev); return normalizeIR(next) })
   }, [pushHistory])
 
@@ -438,8 +446,8 @@ export default function App() {
   useEffect(() => {
     if (persist.read('tourSeen')) return
     const t = setTimeout(() => {
-      toast(`First time here? Take the ${tourSteps.length}-step tour.`, {
-        action: startTour, actionLabel: 'Start tour', duration: 14000,
+      toast('New here? This is a drawing of a system that tells you where it breaks.', {
+        action: startTour, actionLabel: 'Show me', duration: 16000,
       })
       persist.write('tourSeen', true)
     }, 2200)
@@ -588,7 +596,7 @@ export default function App() {
         </div>
       </header>
 
-      <Verdict busy={gate.busy} result={gate.result} base={gate.base}
+      <Verdict busy={gate.busy} result={gate.result} base={gate.base} pristine={!touched}
                variant={variant} onVariant={switchVariant} comparable={comparable} />
 
       {restore && (
@@ -695,7 +703,7 @@ export default function App() {
         )}
         {tab === 'Simulate' && <SimulatePanel ir={ir} rps={rps} setRps={setRps} scenario={scenario} setScenario={setScenario} />}
         {tab === 'Gate' && <GatePanel gate={gate} config={GATE_CONFIG} variant={variant} comparable={comparable} />}
-        {tab === 'Chaos (DES)' && <DesPanel ir={ir} rps={rps} scenario={scenario} />}
+        {tab === 'Chaos' && <DesPanel ir={ir} rps={rps} scenario={scenario} />}
         {tab === 'Twin' && <TwinPanel twin={twin} frames={twin?.buffer.frames || []} ghosts={ghosts} drift={drift}
                                      onCalibrate={onCalibrate} incident={incident} scrubIndex={scrubIndex}
                                      onScrub={(i) => { setScrubIndex(i); setFrame(incident?.frames[i] || null) }} />}
