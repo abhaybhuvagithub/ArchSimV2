@@ -24,6 +24,7 @@ import {
   compileFaults, FAULTS, runMonteCarlo, evaluateSLOs, structuralRisks, findCheapestFix,
   availabilityOf, quorumOf, quorumLatencyMul, atLeast,
   ACRONYMS, ACRONYM_GROUPS, searchAcronyms,
+  telemetryCoverage, telemetryNote, SIGNALS, SIGNAL_KINDS,
   rightSizePlan, rng, streamFor, bandDraw, percentile, isSourceNode, PRICED_AT,
   TAXONOMY, COMPONENT_CATEGORIES, kindsIn, categoryOf, describeKind, searchKinds, specOf, kindName,
 } from '@archsim/core'
@@ -67,6 +68,7 @@ import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
 import { PROFILES, TARGET_UTIL, KNEE } from './benchmark.mjs'
 import { irDocument, irLineRanges, ownerOfLine } from '../apps/canvas/src/irview.js'
 import { loadBand } from '../apps/canvas/src/nodehint.js'
+import { LADDER, STEPS, toSlider, fromSlider, MIN_RPS, MAX_RPS } from '../apps/canvas/src/loadscale.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8')
@@ -2804,6 +2806,76 @@ check('no tab label is an unexplained acronym', () => {
     if (/\([A-Z]{2,}\)/.test(t)) throw new Error(`tab "${t}" carries a bare acronym`)
   }
   return tabs.length > 0
+})
+
+section('The load slider, and what the design can see about itself')
+
+check('every step of the slider changes the value', () => {
+  // The property the first version's test missed. It asserted a value survives
+  // a round trip, which was true, while adjacent positions snapped to the same
+  // figure — so near 4,600 rps the thumb sprang back and the slider looked as
+  // though it had a ceiling.
+  const stuck = []
+  for (let p = 0; p < STEPS; p++) if (fromSlider(p) === fromSlider(p + 1)) stuck.push(p)
+  if (stuck.length) throw new Error(`${stuck.length} position(s) where a step does nothing, first at ${stuck[0]}`)
+  return true
+})
+
+check('the rungs are strictly increasing', () => {
+  for (let i = 1; i < LADDER.length; i++) {
+    if (LADDER[i] <= LADDER[i - 1]) throw new Error(`rung ${i} (${LADDER[i]}) is not above ${LADDER[i - 1]}`)
+  }
+  return LADDER[0] === MIN_RPS && LADDER[LADDER.length - 1] === MAX_RPS
+})
+
+check('a value on the ladder survives a round trip', () => {
+  for (const r of [10, 100, 1000, 4000, 8000, 120000, 2000000]) {
+    if (fromSlider(toSlider(r)) !== r) throw new Error(`${r} → ${fromSlider(toSlider(r))}`)
+  }
+  return true
+})
+
+check('the slider covers the range designs are actually sized for', () => {
+  // A slider that stops at 100k cannot ask the question the benchmark asks.
+  if (toSlider(1_000_000) >= STEPS) throw new Error('a million rps is off the end')
+  if (LADDER.filter((v) => v >= 1000 && v <= 100_000).length < 100) throw new Error('too coarse in the common range')
+  return true
+})
+
+check('telemetry coverage reads the design rather than decorating it', () => {
+  // "🔭 traces, metrics, logs" printed unconditionally says the same thing
+  // about a design with a full observability stack and one with nothing.
+  const blind = telemetryCoverage({ nodes: [{ kind: 'app', label: 'api' }] })
+  if (SIGNALS.some((s) => blind[s].length)) throw new Error('a design with no observability claims coverage')
+
+  const seen = telemetryCoverage({ nodes: [{ kind: 'otel', label: 'collector' }] })
+  if (!SIGNALS.every((s) => seen[s].length)) throw new Error('an OpenTelemetry collector should provide all three')
+
+  const partial = telemetryCoverage({ nodes: [{ kind: 'monitor', label: 'prom' }] })
+  if (!partial.metrics.length || partial.traces.length) throw new Error('metrics alone should not imply traces')
+  return true
+})
+
+check('a missing signal says what you will be missing', () => {
+  // The three failures feel identical at three in the morning and are not.
+  const notes = SIGNALS.map((s) => telemetryNote(s, []))
+  if (new Set(notes).size !== SIGNALS.length) throw new Error('the three gaps give the same explanation')
+  for (const n of notes) if (n.length < 40) throw new Error(`"${n}" does not explain the gap`)
+  return telemetryNote('metrics', ['prom']) === 'prom'
+})
+
+check('every observability kind named is one the catalog has', () => {
+  for (const k of Object.values(SIGNAL_KINDS).flat()) {
+    if (!CATALOG[k]) throw new Error(`SIGNAL_KINDS names '${k}', which is not a component`)
+  }
+  return true
+})
+
+check('the stat row states success rather than making you invert it', () => {
+  const src = read('apps/canvas/src/Panels.jsx')
+  if (!/label="success"/.test(src)) throw new Error('no success rate')
+  if (!/label="QPS"/.test(src)) throw new Error('the row does not say what load it describes')
+  return true
 })
 
 // ────────────────────────────────────────────────────────────────────────────

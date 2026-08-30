@@ -7,7 +7,8 @@
 // entire reason the engine was extracted from the app in Phase 0.
 
 import React, { useMemo, useState } from 'react'
-import { simulate, capacityReport, costReport, compileFaults, FAULTS, label as sloLabel } from '@archsim/core'
+import { simulate, capacityReport, costReport, compileFaults, FAULTS, label as sloLabel, telemetryCoverage, telemetryNote, SIGNALS } from '@archsim/core'
+import { toSlider, fromSlider, shortRps, STEPS, MIN_RPS, MAX_RPS } from './loadscale.js'
 import { Dist } from './Verdict.jsx'
 import { rowsWithBaseline } from './useGate.js'
 import { runDES, analyzeStarvation, analyzeStorm, analyzeBreakers } from '@archsim/des'
@@ -24,8 +25,27 @@ export function SimulatePanel({ ir, rps, setRps, scenario, setScenario }) {
 
   return (
     <div className="panel">
-      <div className="controls">
-        <label>Offered load <input type="number" min="1" step="100" value={rps} onChange={(e) => setRps(Math.max(1, Number(e.target.value) || 1))} /> rps</label>
+      <div className="controls loadrow">
+        {/* A slider, because the question people actually ask is "what happens
+            if this doubles" and typing a number is a poor way to explore that.
+            The box stays for anyone who knows their real peak to the request. */}
+        <label className="loadctl">
+          <span>Offered load</span>
+          <input
+            type="range" min="0" max={STEPS} step="1"
+            value={toSlider(rps)}
+            onChange={(e) => setRps(fromSlider(e.target.value))}
+            aria-label="Offered load, requests per second"
+          />
+          <input
+            className="loadnum" type="number" min={MIN_RPS} max={MAX_RPS}
+            value={rps}
+            onChange={(e) => setRps(Math.max(MIN_RPS, Math.min(MAX_RPS, Number(e.target.value) || MIN_RPS)))}
+            title="Type an exact figure — the slider moves in round numbers, this does not."
+            aria-label="Offered load in requests per second, exact"
+          />
+          <span className="loadunit">rps</span>
+        </label>
         <label>Scenario
           <select value={scenario || ''} onChange={(e) => setScenario(e.target.value || null)}>
             <option value="">nominal</option>
@@ -36,13 +56,19 @@ export function SimulatePanel({ ir, rps, setRps, scenario, setScenario }) {
       </div>
 
       <div className="stats">
-        <Stat label="p50" value={`${sim.p50.toFixed(1)}ms`} />
-        <Stat label="p95" value={`${sim.p95.toFixed(1)}ms`} />
-        <Stat label="p99" value={`${sim.p99.toFixed(1)}ms`} />
+        <Stat label="QPS" value={shortRps(rps)} />
+        <Stat label="p50" value={`${sim.p50.toFixed(0)} ms`} />
+        <Stat label="p95" value={`${sim.p95.toFixed(0)} ms`} />
+        <Stat label="p99" value={`${sim.p99.toFixed(0)} ms`} />
+        {/* Success rather than "dropped: 0". The same fact, but the reader does
+            not have to invert it, and the failing case still shouts. */}
+        <Stat label="success" value={`${(100 - (sim.totalDropped / Math.max(1, rps)) * 100).toFixed(2)}%`}
+              warn={sim.totalDropped > 0} />
         <Stat label="availability" value={`${(sim.sysAvail * 100).toFixed(3)}%`} />
-        <Stat label="dropped" value={`${sim.totalDropped.toFixed(0)} rps`} warn={sim.totalDropped > 0} />
-        <Stat label="cost" value={`$${Math.round(cost.total).toLocaleString()}/mo`} />
+        <Stat label="cost" value={`$${money(cost.total)}/mo`} />
       </div>
+
+      <Telemetry ir={ir} />
 
       <table className="grid">
         <thead><tr><th>component</th><th>in</th><th>util</th><th>replicas</th><th>needed</th><th>basis</th></tr></thead>
@@ -307,6 +333,44 @@ function diffPreview(before, after) {
     out.push('')
   }
   return out.join('\n') || '(no textual change)'
+}
+
+/** $117,412 → "117k". A cost row is scanned, not audited. */
+function money(n) {
+  if (!Number.isFinite(n)) return '—'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return String(Math.round(n))
+}
+
+/**
+ * What the design can see about itself.
+ *
+ * Deliberately not a decorative "🔭 traces, metrics, logs" — printed
+ * unconditionally that says the same thing about a design with a full
+ * observability stack and one with nothing, which is worse than saying nothing.
+ * It reads the design, and a signal with no component behind it is dimmed and
+ * explains what you will be missing at three in the morning.
+ */
+function Telemetry({ ir }) {
+  const cover = telemetryCoverage(ir)
+  return (
+    <div className="telemetry">
+      <span className="telescope" aria-hidden="true">🔭</span>
+      {SIGNALS.map((sig) => {
+        const has = cover[sig].length > 0
+        return (
+          <span key={sig} className={has ? 'sig on' : 'sig off'} title={telemetryNote(sig, cover[sig])}>
+            {has ? '●' : '○'} {sig}
+          </span>
+        )
+      })}
+      {SIGNALS.every((s) => !cover[s].length) && (
+        <span className="note">Nothing here reports on itself — an incident starts with a customer telling you.</span>
+      )}
+    </div>
+  )
 }
 
 function Stat({ label, value, warn }) {

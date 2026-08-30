@@ -1113,3 +1113,34 @@ kbd {
    so it is stated rather than alarmed. */
 .verdict .fixline.intro { color: var(--text); }
 .verdict.fail .fixline.intro, .verdict.risk .fixline.intro { opacity: .95; }
+
+/* ── the load control ─────────────────────────────────────────────────────
+   A slider, because the question is "what if this doubles" and a number box is
+   a poor way to explore that. Log-scaled, so every order of magnitude gets the
+   same amount of track. */
+.loadctl { display: flex; align-items: center; gap: var(--sp-2); flex: 1; min-width: 260px; }
+.loadctl > span:first-child { flex: none; }
+.loadctl input[type="range"] {
+  flex: 1; min-width: 120px; accent-color: var(--accent); height: 18px; cursor: pointer;
+}
+.loadnum {
+  width: 8ch; background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--r-btn); padding: 4px 9px; font-family: var(--font-mono); font-size: 12.5px;
+  text-align: right;
+}
+.loadunit { color: var(--muted); font-size: 12.5px; flex: none; }
+.controls.loadrow { gap: var(--sp-4); }
+
+/* ── what the design can see about itself ─────────────────────────────── */
+.telemetry {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+  margin: calc(-1 * var(--sp-1)) 0 var(--sp-4); font-size: 12px;
+}
+.telescope { font-size: 13px; }
+.sig {
+  font-family: var(--label-font); text-transform: var(--label-tt); letter-spacing: var(--label-ls);
+  font-size: 10.5px; cursor: help;
+}
+.sig.on { color: var(--twin-live); }
+.sig.off { color: var(--muted); opacity: .7; }
+.telemetry .note { font-size: 11.5px; color: var(--muted); }
