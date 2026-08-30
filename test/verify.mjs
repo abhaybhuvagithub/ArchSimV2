@@ -23,7 +23,7 @@ import {
   CATALOG, kinds, capacityFor, simulate, capacityReport, costReport, nodeCost, rateFor,
   compileFaults, FAULTS, runMonteCarlo, evaluateSLOs, structuralRisks, findCheapestFix,
   rightSizePlan, rng, streamFor, bandDraw, percentile, isSourceNode, PRICED_AT,
-  TAXONOMY, COMPONENT_CATEGORIES, kindsIn, categoryOf, describeKind, searchKinds, specOf,
+  TAXONOMY, COMPONENT_CATEGORIES, kindsIn, categoryOf, describeKind, searchKinds, specOf, kindName,
 } from '@archsim/core'
 import {
   parseHCL, walkBlocks, addressOf, bodyOf, applyEdits, parseYamlDocs, getPath, k8sAddress,
@@ -2318,6 +2318,28 @@ check('nothing in the app can scroll the page sideways', () => {
   const pal = css.match(/\.palette \{[\s\S]*?\n\}/)[0]
   if (!/overflow-x:\s*hidden/.test(pal)) throw new Error('.palette must not scroll horizontally')
   if (!/\.body > \* \{ min-width: 0; \}/.test(css)) throw new Error('grid tracks must not size to content')
+  return true
+})
+
+check('the component panel is wide enough for the components in it', () => {
+  // Measured, not chosen: at the old 178px, 33 of the 117 names were ellipsised.
+  // Every name fits at 232px. 240 is that plus a little room.
+  const css = read('apps/canvas/src/styles.css')
+  const m = css.match(/\.body \{ display: grid; grid-template-columns: (\d+)px/)
+  if (!m) throw new Error('could not find the three-column grid')
+  const width = Number(m[1])
+  if (width < 232) throw new Error(`panel is ${width}px; names start truncating below 232px`)
+  return true
+})
+
+check('no component name is too long for the panel', () => {
+  // The panel was widened to fit the catalogue as it stands. This is the other
+  // half of that bargain: a new component with a very long name should fail
+  // here rather than quietly appear with an ellipsis nobody notices.
+  // 24 characters is what the 240px panel holds at the label's size and weight.
+  const LIMIT = 24
+  const tooLong = kinds().map((k) => kindName(k)).filter((n) => n.length > LIMIT)
+  if (tooLong.length) throw new Error(`too long for the panel (max ${LIMIT}): ${tooLong.join(', ')}`)
   return true
 })
 

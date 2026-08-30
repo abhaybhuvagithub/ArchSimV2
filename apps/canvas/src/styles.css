@@ -277,10 +277,18 @@ code, pre { font-size: 12.5px; }
 .banner.error { background: color-mix(in srgb, var(--bad) 14%, var(--panel)); color: var(--bad); border-bottom: 1px solid var(--border); }
 
 /* ── the three columns ────────────────────────────────────────────────── */
-/* `min-width: 0` on the tracks: without it a grid track sizes to its widest
+/* The component panel is 240px because that is what the components need, not
+   because it is a round number. At the old 178px, 33 of the 117 names were
+   ellipsised — "Kubernetes Gateway API", "gRPC-JSON Transcoder", "FastAPI
+   (Async Python)" — which is a poor way to present a catalogue whose whole
+   point is that you can find the thing you want. Measured: every name fits at
+   232px; 240 leaves a little room for the next one. It costs the canvas 62px of
+   994 at 1500px wide, and below 1100px the panel is hidden anyway.
+
+   `min-width: 0` on the tracks: without it a grid track sizes to its widest
    child's min-content, so one over-long label anywhere in a panel makes the
    whole page scroll sideways. */
-.body { display: grid; grid-template-columns: 178px 1fr 328px; flex: 1; min-height: 0; }
+.body { display: grid; grid-template-columns: 240px 1fr 328px; flex: 1; min-height: 0; }
 .body > * { min-width: 0; }
 
 /* Scrolls down, never across. A sidebar with a horizontal scrollbar has put a
