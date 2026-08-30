@@ -40,7 +40,15 @@ export const PALETTES = [
   { id: 'kesar', name: 'Kesar', swatch: '#FC470D', note: 'Primary' },
   { id: 'glow', name: 'Glow', swatch: '#37c28e' },
   { id: 'lilac', name: 'Lilac', swatch: '#a679ff' },
+  // The first palette that is more than an accent: Obsidian restyles the ground
+  // too, and is dark whatever the OS says. `surface: true` is what the View menu
+  // reads in order to say so — otherwise someone picks it and then wonders why
+  // the light-mode toggle appears to have stopped working.
+  { id: 'obsidian', name: 'Obsidian', swatch: '#58A6FF', note: 'Slate surfaces · always dark', surface: true },
 ]
+
+/** Does this palette bring its own surfaces, overriding light/dark? */
+export const isSurfacePalette = (id) => PALETTES.some((p) => p.id === id && p.surface)
 
 export function applyPalette(id) {
   const chosen = PALETTES.some((p) => p.id === id) ? id : PALETTES[0].id

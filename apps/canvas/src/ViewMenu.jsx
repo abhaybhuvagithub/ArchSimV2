@@ -11,7 +11,7 @@
 // is a way of viewing the design, not a preference about the application.
 
 import React, { useEffect, useRef, useState } from 'react'
-import { PALETTES } from './persist.js'
+import { PALETTES, isSurfacePalette } from './persist.js'
 
 export { PALETTES } from './persist.js'
 
@@ -31,10 +31,22 @@ export default function ViewMenu({
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
   }, [open])
 
-  const dark = theme === 'dark' || (theme === 'system' && typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches)
+  // A surface palette brings its own ground, so the light/dark toggle has
+  // nothing left to switch. Saying so is better than leaving a control that
+  // silently does nothing.
+  const surfaced = isSurfacePalette(palette)
+  const dark = surfaced
+    || theme === 'dark'
+    || (theme === 'system' && typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const item = (label, note, onClick, checked = null) => (
-    <button className="menu-item" onClick={() => { onClick(); setOpen(false) }} role="menuitem">
+  const item = (label, note, onClick, checked = null, disabled = false) => (
+    <button
+      className="menu-item"
+      onClick={() => { if (disabled) return; onClick(); setOpen(false) }}
+      role="menuitem"
+      aria-disabled={disabled || undefined}
+      disabled={disabled}
+    >
       <span className="menu-check">{checked === true ? '✓' : ''}</span>
       <span>
         <b>{label}</b>
@@ -58,7 +70,15 @@ export default function ViewMenu({
           {item('⧉ Arrange', 'Clean left-to-right layers with fewer crossing lines', onArrange)}
           {item('⤢ Fit', 'Fit the whole diagram in view', onFit)}
           {item('①②③ Step numbers', 'Number the connections in request order', () => setStepNumbers(!stepNumbers), stepNumbers)}
-          {item(dark ? '☀️ Light mode' : '🌙 Dark mode', 'Switches this palette between dark and light', cycleTheme)}
+          {item(
+            dark ? '☀️ Light mode' : '🌙 Dark mode',
+            surfaced
+              ? 'Obsidian brings its own surfaces — choose another palette to use this'
+              : 'Switches this palette between dark and light',
+            cycleTheme,
+            null,
+            surfaced,
+          )}
 
           <div className="menu-label">Palette</div>
           {PALETTES.map((p) => (

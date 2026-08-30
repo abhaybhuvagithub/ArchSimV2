@@ -34,6 +34,33 @@
   --r-pill: 980px;
   --r-btn: 999px;
 
+  /* Spacing. There was no scale before this — every padding in the file was an
+     independently chosen number, which is why nothing quite lined up between
+     panels. A 4px base with a doubling-ish ramp; applied to containers first
+     and to the rest as they are touched, because a blind sweep of every
+     padding would be a lot of unreviewable visual change at once. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* Twin state. Only one of these is a genuinely new idea: `sim` distinguishes
+     a number the model produced from a number production measured, which is
+     the distinction the whole digital-twin story rests on and which nothing in
+     the palette expressed before.
+
+     The other three are the three verdicts under twin-specific names, aliased
+     rather than given fresh hex values — a colour defined twice is a colour
+     that will drift. `drift` and `warn` therefore look identical on purpose;
+     what separates a drifting node from a risky one is form, not hue: drift
+     draws a ring around the node, risk fills its badge. */
+  --twin-live: var(--ok);
+  --twin-sim: #2F81F7;
+  --twin-drift: var(--warn);
+  --twin-breach: var(--bad);
+
   /* Kesar, light — v1's primary palette. */
   --bg: #f5f6f8;
   --panel: #ffffff;
@@ -87,11 +114,47 @@
   --chip-bg: rgba(17, 22, 31, .92);
 }
 
-/* Palette is one token — the accent — and it is deliberately independent of
-   light/dark, so switching one never silently switches the other. */
-:root[data-palette="kesar"] { --accent: #FC470D; }
-:root[data-palette="glow"] { --accent: #37c28e; }
-:root[data-palette="lilac"] { --accent: #a679ff; }
+/* Palette is the accent, and it is deliberately independent of light/dark, so
+   switching one never silently switches the other.
+ *
+ * `--on-accent` is the second half of the pair, and it exists because the file
+ * used to hardcode `color: #fff` on every accent-filled control. Measured, that
+ * was 3.47:1 on Kesar, 3.09 on Lilac and 2.27 on Glow — below AA on all three,
+ * on the primary button, the active tab and the selected chip. These accents
+ * are light colours; dark text on them measures 5.12, 5.76 and 7.85. So the
+ * pair travels together, and no control picks its own foreground again. */
+:root[data-palette="kesar"] { --accent: #FC470D; --on-accent: #141820; }
+:root[data-palette="glow"]  { --accent: #37c28e; --on-accent: #141820; }
+:root[data-palette="lilac"] { --accent: #a679ff; --on-accent: #141820; }
+
+/* Obsidian Slate is the exception, and it needed a new axis to exist.
+ *
+ * The other three change one token. This one restyles the ground as well — a
+ * near-black slate with a blue accent — so it is a *surface* theme, not a
+ * palette entry, and it is dark whatever the OS says. That is why the block
+ * below redefines the surface tokens and why it sits after the theme blocks
+ * rather than beside its three siblings: it has to win over both of them.
+ *
+ * Its accent (#58A6FF) is a light blue, so it keeps the same dark foreground
+ * the others use — 7.36:1, the best of the four. */
+:root[data-palette="obsidian"] {
+  --accent: #58A6FF;
+  --on-accent: #0A0C10;
+  --bg: #0A0C10;
+  --panel: #161B22;
+  --panel2: #21262D;
+  --border: #30363D;
+  --text: #E6EDF3;
+  --muted: #8B949E;
+  --ok: #3FB950;
+  --warn: #D29922;
+  --bad: #F85149;
+  --canvas: radial-gradient(circle at 30% 20%, #0E1117 0%, #0A0C10 72%);
+  --sel: #E6EDF3;
+  --shadow: rgba(0, 0, 0, .55);
+  --chip-bg: rgba(22, 27, 34, .94);
+  --twin-sim: #58A6FF;
+}
 
 * { box-sizing: border-box; }
 body {
@@ -147,9 +210,9 @@ code, pre { font-size: 12.5px; }
 .btn:focus-visible, .tabs button:focus-visible, .seg button:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
-.btn.primary:hover { color: #fff; filter: brightness(1.1); }
-.btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
+.btn.primary:hover { color: var(--on-accent); filter: brightness(1.06); }
+.btn.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.danger { border-color: var(--bad); color: var(--bad); }
 .btn:disabled { opacity: .5; cursor: default; }
 
@@ -209,7 +272,10 @@ code, pre { font-size: 12.5px; }
   padding: 7px 9px; border: 0; border-radius: 9px; background: transparent;
   color: inherit; text-align: left; font-size: 14px; cursor: pointer;
 }
-.menu-item:hover { background: color-mix(in srgb, var(--accent) var(--state-hover), transparent); }
+.menu-item:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) var(--state-hover), transparent); }
+/* Dimmed, but the note beside it still says why — a disabled control that does
+   not explain itself is just a broken one. */
+.menu-item:disabled { opacity: .45; cursor: default; }
 .menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .menu-item b { display: block; font-weight: 500; }
 .menu-check { width: 14px; color: var(--accent); flex: none; }
@@ -271,7 +337,7 @@ code, pre { font-size: 12.5px; }
   background: transparent; border: 0; padding: 6px 16px; cursor: pointer;
   color: var(--muted); font-size: 14px;
 }
-.seg button.on { background: var(--accent); color: #fff; font-weight: 500; }
+.seg button.on { background: var(--accent); color: var(--on-accent); font-weight: 500; }
 
 .banner { padding: 9px 18px; font-size: 14px; }
 .banner.error { background: color-mix(in srgb, var(--bad) 14%, var(--panel)); color: var(--bad); border-bottom: 1px solid var(--border); }
@@ -438,7 +504,7 @@ code, pre { font-size: 12.5px; }
   border-radius: var(--r-btn); padding: 5px 14px; cursor: pointer; font-size: 13.5px;
 }
 .tabs button:hover { border-color: var(--accent); color: var(--accent); }
-.tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
 .panel { padding: 14px; overflow: auto; flex: 1; }
 .controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .controls label { font-size: 12.5px; color: var(--muted); }
@@ -450,7 +516,7 @@ code, pre { font-size: 12.5px; }
   background: var(--panel2); border: 1px solid var(--border);
   border-radius: var(--r-btn); padding: 6px 15px; cursor: pointer;
 }
-.controls button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.controls button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
 .note { font-size: 12.5px; color: var(--muted); max-width: 760px; }
 
 /* ── the Arrange tab ────────────────────────────────────────────────────────
@@ -631,7 +697,7 @@ code, pre { font-size: 12.5px; }
 
 .skip-link {
   position: absolute; left: -9999px; top: 8px; z-index: 200;
-  background: var(--accent); color: #fff; padding: 10px 16px; border-radius: var(--r-btn);
+  background: var(--accent); color: var(--on-accent); padding: 10px 16px; border-radius: var(--r-btn);
 }
 .skip-link:focus { left: 12px; }
 
@@ -645,7 +711,7 @@ code, pre { font-size: 12.5px; }
 }
 .iconbtn:hover { border-color: var(--accent); color: var(--accent); }
 .iconbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.iconbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.iconbtn.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 /* ── verdict: cross-fade rather than snap ─────────────────────────────────── */
 .verdict .mark, .verdict .fixline {
@@ -806,7 +872,7 @@ code, pre { font-size: 12.5px; }
 .cats { display: flex; gap: 6px; padding: 10px 12px; overflow-x: auto; border-bottom: 1px solid var(--border); scrollbar-width: none; }
 .cats::-webkit-scrollbar { display: none; }
 .cats .chip { white-space: nowrap; cursor: pointer; }
-.cats .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cats .chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .gallerylist { max-height: 56vh; }
 .trow {
   display: block; width: 100%; text-align: left; border: 0; background: transparent;

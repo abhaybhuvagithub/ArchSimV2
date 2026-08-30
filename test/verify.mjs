@@ -2026,16 +2026,67 @@ check('both delivery paths load the webfonts', () => {
   const wanted = /IBM\+Plex\+Sans.*IBM\+Plex\+Mono.*Space\+Grotesk/
   return wanted.test(html) && wanted.test(artifact)
 })
-check('the palettes are the three v1 offers', () =>
-  PALETTES.map((p) => p.id).join() === 'kesar,glow,lilac'
+check("v1's three palettes are all still on offer", () =>
+  ['kesar', 'glow', 'lilac'].every((id) => PALETTES.some((p) => p.id === id))
   && PALETTES.every((p) => new RegExp(`\\[data-palette="${p.id}"\\]\\s*{\\s*--accent:\\s*${p.swatch}`, 'i').test(css)))
-check('a palette changes the accent and nothing else', () => {
-  // Every palette block declares exactly one token. A palette that quietly
-  // moved the background would make light and dark a lottery.
-  for (const m of css.matchAll(/\[data-palette="[a-z]+"\]\s*{([^}]*)}/g)) {
-    const decls = m[1].split(';').map((d) => d.trim()).filter(Boolean)
-    if (decls.length !== 1 || !decls[0].startsWith('--accent')) throw new Error(`palette block declares ${decls.join('; ')}`)
+
+check('an accent palette changes the accent pair and nothing else', () => {
+  // The original rule was "exactly one token", which kept light and dark from
+  // becoming a lottery. It is now "the accent and its foreground", because a
+  // fill colour without the text colour that goes on it is half a decision —
+  // and the half that was missing is what failed contrast on all three.
+  //
+  // A palette that restyles the ground is a different thing and must say so in
+  // PALETTES with `surface: true`, so the View menu can tell someone their
+  // light/dark toggle no longer applies.
+  const ALLOWED = new Set(['--accent', '--on-accent'])
+  for (const m of css.matchAll(/\[data-palette="([a-z]+)"\]\s*{([^}]*)}/g)) {
+    const [, id, body] = m
+    const names = body.split(';').map((d) => d.trim()).filter(Boolean).map((d) => d.split(':')[0].trim())
+    const surface = PALETTES.find((p) => p.id === id)?.surface
+    if (surface) {
+      if (!names.includes('--bg')) throw new Error(`${id} claims to be a surface palette but sets no --bg`)
+      continue
+    }
+    const extra = names.filter((n) => !ALLOWED.has(n))
+    if (extra.length) throw new Error(`palette ${id} also declares ${extra.join(', ')} but is not marked surface: true`)
   }
+  return true
+})
+
+check('every palette puts legible text on its accent', () => {
+  // This is the check the studio did not have. `color: #fff` was hardcoded on
+  // every accent-filled control, and measured 3.47:1 on Kesar, 3.09 on Lilac
+  // and 2.27 on Glow — under AA on all three, on the primary button, the
+  // active tab and the selected chip.
+  const lum = (hex) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+  }
+  const ratio = (a, b) => {
+    const [x, y] = [lum(a), lum(b)]
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+  }
+  for (const m of css.matchAll(/\[data-palette="([a-z]+)"\]\s*{([^}]*)}/g)) {
+    const [, id, body] = m
+    const accent = body.match(/--accent:\s*(#[0-9a-fA-F]{6})/)?.[1]
+    const on = body.match(/--on-accent:\s*(#[0-9a-fA-F]{6})/)?.[1]
+    if (!accent || !on) throw new Error(`palette ${id} does not declare both --accent and --on-accent`)
+    const r = ratio(accent, on)
+    if (r < 4.5) throw new Error(`palette ${id}: ${on} on ${accent} is ${r.toFixed(2)}:1, under AA`)
+  }
+  return true
+})
+
+check('no control picks its own foreground on an accent fill', () => {
+  // The rule the contrast check depends on. One hardcoded white here and the
+  // palette-level guarantee above stops being true of the actual pixels.
+  const offenders = []
+  for (const line of css.split('\n')) {
+    if (/background:\s*var\(--accent\)/.test(line) && /color:\s*#/.test(line)) offenders.push(line.trim())
+  }
+  if (offenders.length) throw new Error(`hardcoded foreground on an accent fill: ${offenders[0]}`)
   return true
 })
 check('screen-reader mode turns off motion and strengthens focus', () =>
