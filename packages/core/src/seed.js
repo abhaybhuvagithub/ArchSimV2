@@ -9,6 +9,22 @@
 
 import { CATALOG, specOf } from './catalog.js'
 
+/**
+ * Components whose replicas form a consensus group rather than a pool.
+ *
+ * These are the kinds where a replica count means "members of a Raft or Paxos
+ * group" — a majority must be reachable, so the availability arithmetic is the
+ * binomial tail rather than 1-(1-a)^n, and an even member count is worse than
+ * one fewer. Getting this wrong understated a three-member group's
+ * unavailability by 298×.
+ *
+ * Deliberately a short list. A SQL database is *usually* leader-follower rather
+ * than quorum, and a design that runs one in a consensus configuration should
+ * say so on the node rather than have it assumed here. Guessing wrong in the
+ * pessimistic direction is still guessing.
+ */
+const QUORUM_KINDS = new Set(['zk', 'registry', 'config'])
+
 /** Vendor SLAs and published benchmarks get tighter priors than our estimates. */
 const VENDOR_KINDS = new Set(['lb', 'gateway', 'cdn', 'dns', 'sql', 'nosql', 'blob', 'queue', 'kafka', 'search', 'cache'])
 
@@ -23,6 +39,7 @@ export function capacityFor(kind, extra = {}) {
     availability: spec.avail,
     concurrency: spec.concurrency ?? 64,
     queueDepth: spec.queueDepth ?? 256,
+    replication: QUORUM_KINDS.has(kind) ? 'quorum' : 'stateless',
     ...(spec.cacheHit ? { cacheHit: spec.cacheHit } : {}),
     ...(spec.source ? { source: true } : {}),
     provenance: {

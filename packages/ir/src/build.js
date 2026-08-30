@@ -102,6 +102,20 @@ export function irEdge({ id, from, to, callSemantics, protocol, weight, timeoutM
   }
 }
 
+/**
+ * What a replica count means for this component.
+ *
+ *   stateless  any one replica can serve the request. Availability is
+ *              1 - (1-a)^n: more replicas, monotonically better.
+ *   leader     one replica serves; the others stand by. A failure costs a
+ *              failover window, so more replicas help, but less than stateless.
+ *   quorum     a majority must be reachable — Raft, Paxos, ZooKeeper, etcd,
+ *              and every consensus-backed store. Availability is the binomial
+ *              tail P(at least ⌊n/2⌋+1 up), which is a *different shape*: two
+ *              replicas are worse than one, and only odd counts pay.
+ */
+export const REPLICATION = new Set(['stateless', 'leader', 'quorum'])
+
 export function normalizeCapacity(c = {}) {
   const lat = c.latencyMs == null
     ? { ...FALLBACK_CAPACITY.latencyMs }
@@ -119,6 +133,10 @@ export function normalizeCapacity(c = {}) {
     availability: clamp(num(c.availability, 0.999), 0, 1),
     concurrency: Math.max(0, Math.round(num(c.concurrency, FALLBACK_CAPACITY.concurrency))),
     queueDepth: Math.max(0, Math.round(num(c.queueDepth, FALLBACK_CAPACITY.queueDepth))),
+    // How the replicas relate to each other, which decides what a replica count
+    // buys you. Default `stateless`, which is what every node was implicitly
+    // assumed to be, so an IR that does not say keeps the old arithmetic.
+    replication: REPLICATION.has(c.replication) ? c.replication : 'stateless',
     ...(c.cacheHit !== undefined ? { cacheHit: clamp(num(c.cacheHit, 0), 0, 1) } : {}),
     ...(c.source ? { source: true } : {}),
     provenance: { cls, basis: prov.basis || '', refs: prov.refs || [] },

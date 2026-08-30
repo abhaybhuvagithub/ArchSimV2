@@ -13,6 +13,7 @@
 
 import { CATALOG, specOf } from './catalog.js'
 import { physicalEffects, capacitySplit, effectiveCapacity, readFractionOf } from './physics.js'
+import { availabilityOf } from './replication.js'
 
 const NOFX = { capMul: 1, latMul: 1, drop: 0, noCache: false, dup: 0 }
 
@@ -86,7 +87,7 @@ export function simulate(ir, totalRps, opts = {}) {
     const latency = baseLat * Math.min(qFactor, 20) * f.latMul * ph.latMul
 
     const availOne = cap0.availability
-    let avail = replicas <= 0 ? 0 : 1 - Math.pow(1 - availOne, replicas)
+    let avail = replicas <= 0 ? 0 : availabilityOf(availOne, replicas, cap0.replication)
     if (f.drop > 0) avail *= (1 - f.drop)
     if (f.capMul < 1) avail *= (0.5 + 0.5 * f.capMul)
 

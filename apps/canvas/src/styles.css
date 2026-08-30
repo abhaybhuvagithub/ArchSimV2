@@ -1003,3 +1003,44 @@ kbd {
 @media (max-width: 1100px) {
   .body.triview { grid-template-columns: 1fr; }
 }
+
+/* ── the glossary ─────────────────────────────────────────────────────────
+   A definition list, not a table: the terms are wildly different lengths and a
+   table would either truncate them or leave a column of empty space. */
+.acsearch {
+  flex: 1; min-width: 200px; max-width: 420px;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--r-btn); padding: 6px 13px; font-size: 14px;
+}
+.acsearch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.acgroup { margin-bottom: var(--sp-5); }
+.acgroup h4 {
+  font-family: var(--label-font); text-transform: var(--label-tt);
+  letter-spacing: var(--label-ls); font-weight: var(--label-weight);
+  font-size: 11px; color: var(--muted); margin: 0 0 var(--sp-2);
+}
+.aclist { margin: 0; }
+.acrow {
+  display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  gap: var(--sp-2) var(--sp-4); padding: var(--sp-3) 0; border-top: 1px solid var(--border);
+}
+.acrow dt { min-width: 0; }
+.acrow dt b { font-family: var(--font-mono); font-size: 13px; display: block; }
+.aclong { display: block; font-size: 12px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+.acrow dd { margin: 0; min-width: 0; }
+.acrow dd p { margin: 0 0 var(--sp-2); font-size: 13.5px; line-height: 1.55; }
+.acrow dd p:last-child { margin-bottom: 0; }
+
+/* The gotcha is the part worth the panel existing, so it is marked rather than
+   left as a second paragraph nobody reaches. */
+.acgotcha { color: var(--muted); border-left: 2px solid var(--twin-drift); padding-left: var(--sp-3); }
+.acgotcha span {
+  font-family: var(--label-font); text-transform: var(--label-tt);
+  letter-spacing: var(--label-ls); font-size: 10px; color: var(--twin-drift);
+  display: block; margin-bottom: 2px;
+}
+
+@media (max-width: 700px) {
+  .acrow { grid-template-columns: 1fr; }
+}

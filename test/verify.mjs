@@ -16,12 +16,14 @@ import { execFileSync } from 'node:child_process'
 
 import {
   createIR, irNode, irEdge, normalizeIR, validateIR, irHash, serializeIR, parseIR,
-  canonical, diffIR, threeWayMerge, fromV1, toV1, ulid, ulidFrom, isUlid,
+  canonical, diffIR, threeWayMerge, fromV1, toV1, ulid, ulidFrom, isUlid, normalizeCapacity,
   IR_VERSION, PROVENANCE_CLASSES, SLO_METRICS,
 } from '@archsim/ir'
 import {
   CATALOG, kinds, capacityFor, simulate, capacityReport, costReport, nodeCost, rateFor,
   compileFaults, FAULTS, runMonteCarlo, evaluateSLOs, structuralRisks, findCheapestFix,
+  availabilityOf, quorumOf, quorumLatencyMul, atLeast,
+  ACRONYMS, ACRONYM_GROUPS, searchAcronyms,
   rightSizePlan, rng, streamFor, bandDraw, percentile, isSourceNode, PRICED_AT,
   TAXONOMY, COMPONENT_CATEGORIES, kindsIn, categoryOf, describeKind, searchKinds, specOf, kindName,
 } from '@archsim/core'
@@ -2532,6 +2534,158 @@ check('tri-view is a mode, and the layout still has one column when narrow', () 
   const narrow = css.slice(css.indexOf('@media (max-width: 1100px)'))
   if (!/\.body\.triview \{ grid-template-columns: 1fr; \}/.test(narrow)) throw new Error('tri-view does not collapse when narrow')
   return true
+})
+
+section('Replication — what a replica count actually buys')
+
+check('quorum availability matches the closed form, empirically', () => {
+  // Held to the same standard as the DES against Erlang-C: the arithmetic is
+  // checked against a simulation of independent replica failures, not merely
+  // against itself.
+  const r = rng(7)
+  for (const [a, n] of [[0.99, 3], [0.99, 5], [0.95, 3], [0.9, 7], [0.99, 2]]) {
+    let up = 0
+    const T = 120000
+    for (let i = 0; i < T; i++) {
+      let live = 0
+      for (let k = 0; k < n; k++) if (r() < a) live++
+      if (live >= quorumOf(n)) up++
+    }
+    const observed = up / T
+    const theory = availabilityOf(a, n, 'quorum')
+    if (Math.abs(observed - theory) > 0.004) {
+      throw new Error(`a=${a} n=${n}: theory ${theory.toFixed(6)}, observed ${observed.toFixed(6)}`)
+    }
+  }
+  return true
+})
+
+check('a second quorum member is worse than one, not better', () => {
+  // The inversion that made the old model actively misleading. It said adding
+  // a replica always helps; for a consensus group it does not, and a tool that
+  // advises otherwise damages the system it is advising about.
+  const one = availabilityOf(0.99, 1, 'quorum')
+  const two = availabilityOf(0.99, 2, 'quorum')
+  if (!(two < one)) throw new Error(`2 members (${two}) should be worse than 1 (${one})`)
+  // …and stateless still behaves the old way, because for a pool it is right.
+  return availabilityOf(0.99, 2, 'stateless') > availabilityOf(0.99, 1, 'stateless')
+})
+
+check('an even quorum is never better than the odd count below it', () => {
+  for (const n of [2, 4, 6, 8]) {
+    const even = availabilityOf(0.99, n, 'quorum')
+    const odd = availabilityOf(0.99, n - 1, 'quorum')
+    if (even >= odd) throw new Error(`${n} members should be worse than ${n - 1}`)
+  }
+  return true
+})
+
+check('the old arithmetic still applies to a stateless pool', () => {
+  // The fix must not change the answer where the old answer was right.
+  for (const n of [1, 2, 3, 5]) {
+    const expected = 1 - (1 - 0.99) ** n
+    if (Math.abs(availabilityOf(0.99, n, 'stateless') - expected) > 1e-12) throw new Error(`stateless n=${n} changed`)
+  }
+  return true
+})
+
+check('quorum does not move the median, and says so', () => {
+  // The majority-th of an odd group is the median, so a quorum write's p50 is
+  // one replica's p50. Surprising enough to be worth asserting rather than
+  // leaving as a silent no-op in the hot path.
+  for (const n of [3, 5, 7]) if (Math.abs(quorumLatencyMul(n, 'quorum', 0.5) - 1) > 1e-9) throw new Error(`n=${n} moved the median`)
+  // The even case does move it, which is the other half of why even is bad.
+  return quorumLatencyMul(2, 'quorum', 0.5) > 1
+})
+
+check('the quorum kinds are a short, deliberate list', () => {
+  // Guessing that every datastore is a consensus group would be the same error
+  // in the pessimistic direction. A SQL database is usually leader-follower.
+  const quorum = kinds().filter((k) => capacityFor(k).replication === 'quorum')
+  if (!quorum.includes('zk')) throw new Error('coordination is definitionally a quorum')
+  if (quorum.includes('sql')) throw new Error('sql assumed to be quorum; that is a guess about the design')
+  return quorum.length > 0 && quorum.length <= 6
+})
+
+check('no template runs a quorum component on an even member count', () => {
+  // The new arithmetic found one the moment it existed: the config-and-service
+  // discovery template ran a 2-member registry, which needs both up.
+  const bad = []
+  for (const row of TEMPLATES) {
+    const ir = template(row.id)
+    for (const n of ir.nodes) {
+      if (n.capacity.replication === 'quorum' && n.capacity.replicas > 0 && n.capacity.replicas % 2 === 0) {
+        bad.push(`${row.name}/${n.label}×${n.capacity.replicas}`)
+      }
+    }
+  }
+  if (bad.length) throw new Error(`even quorum: ${bad.join(', ')}`)
+  return true
+})
+
+check('replication survives a normalize round-trip', () => {
+  const ir = normalizeIR({ nodes: [irNode({ kind: 'zk', label: 'c', capacity: { replicas: 3, replication: 'quorum' } })], edges: [] })
+  const again = normalizeIR(ir)
+  return ir.nodes[0].capacity.replication === 'quorum' && again.nodes[0].capacity.replication === 'quorum'
+})
+
+check('an unknown replication mode falls back rather than throwing', () => {
+  const c = normalizeCapacity({ replication: 'gossip-magic' })
+  return c.replication === 'stateless'
+})
+
+check('every term the glossary defines says something the name does not', () => {
+  for (const a of ACRONYMS) {
+    if (a.means.length < 30) throw new Error(`${a.short}: explanation too thin`)
+    // "CDN — a content delivery network" teaches nobody anything.
+    if (a.means.toLowerCase().startsWith(a.long.toLowerCase().slice(0, 12)) && a.long !== '—') {
+      throw new Error(`${a.short}: the explanation just restates the expansion`)
+    }
+  }
+  return ACRONYMS.length >= 40
+})
+
+check('the glossary covers the jargon the studio actually shows', () => {
+  // A glossary that omits the terms on screen is decoration. These are the ones
+  // that appear in the panels, the verdict bar and the catalog.
+  const must = ['p99', 'p50', 'rps', 'SLO', 'DES', 'IR', 'ULID', 'CDC', 'mTLS', 'CDN', 'HSM', 'quorum', 'drift', 'AZ']
+  const have = new Set(ACRONYMS.map((a) => a.short))
+  const missing = must.filter((m) => !have.has(m))
+  if (missing.length) throw new Error(`not defined: ${missing.join(', ')}`)
+  return true
+})
+
+check('the terms that invite a mistake carry the warning', () => {
+  // The reason this is a panel and not a link to a glossary. p99 read as
+  // "99% of the time it is fine" inverts every verdict the gate gives.
+  const risky = ['p99', 'quorum', 'the knee', 'grey failure', 'thundering herd', 'error budget', 'ULID']
+  for (const r of risky) {
+    const a = ACRONYMS.find((x) => x.short === r)
+    if (!a?.gotcha) throw new Error(`${r} has no note about how it is misread`)
+  }
+  return ACRONYMS.filter((a) => a.gotcha).length >= 20
+})
+
+check('no term is defined twice', () => {
+  const seen = new Set()
+  for (const a of ACRONYMS) {
+    if (seen.has(a.short)) throw new Error(`${a.short} defined twice`)
+    seen.add(a.short)
+  }
+  return true
+})
+
+check('the glossary search reaches an explanation, not just a name', () => {
+  // Someone who does not know the word "quorum" types what they are worried
+  // about. The search has to cover the prose.
+  if (!searchAcronyms('majority').some((a) => a.short === 'quorum')) throw new Error('"majority" does not find quorum')
+  if (!searchAcronyms('percentile').some((a) => a.short === 'p99')) throw new Error('"percentile" does not find p99')
+  return searchAcronyms('').length === ACRONYMS.length
+})
+
+check('the Acronyms tab is wired into the deck', () => {
+  const app = read('apps/canvas/src/App.jsx')
+  return /TABS = \[[^\]]*'Acronyms'/.test(app) && app.includes('<AcronymsPanel />')
 })
 
 // ────────────────────────────────────────────────────────────────────────────

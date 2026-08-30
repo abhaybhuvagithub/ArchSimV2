@@ -17,6 +17,7 @@ import { tidyIfWorse, rankLayouts, requestOrder } from './arrange.js'
 import ViewMenu, { TextEquivalent, PALETTES } from './ViewMenu.jsx'
 import Palette from './Palette.jsx'
 import IRPanel from './IRPanel.jsx'
+import AcronymsPanel from './Acronyms.jsx'
 import { autoLayout } from './layout.js'
 import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_CFN, EXAMPLE_SLOS } from './examples.js'
 import Verdict from './Verdict.jsx'
@@ -29,7 +30,7 @@ import { buildTour, SHORTCUTS } from './tour.js'
 import * as persist from './persist.js'
 import { downloadIR, saveFile, gateMarkdown, copyText, exportSVG, exportPNG, shareLink, readShareLink } from './exporters.js'
 
-const TABS = ['Simulate', 'Gate', 'Chaos (DES)', 'Twin', 'Arrange', 'Code']
+const TABS = ['Simulate', 'Gate', 'Chaos (DES)', 'Twin', 'Arrange', 'Code', 'Acronyms']
 
 /** A proposal from the wiring rules, as an IR edge that draws dashed. */
 const asEdge = (e) => ({
@@ -692,6 +693,7 @@ export default function App() {
                                      onCalibrate={onCalibrate} incident={incident} scrubIndex={scrubIndex}
                                      onScrub={(i) => { setScrubIndex(i); setFrame(incident?.frames[i] || null) }} />}
         {tab === 'Code' && <CodePanel baseIR={baseIR} ir={ir} sources={sources} />}
+        {tab === 'Acronyms' && <AcronymsPanel />}
       </div>
 
       <Templates open={gallery} onClose={() => setGallery(false)} onPick={openTemplate} />

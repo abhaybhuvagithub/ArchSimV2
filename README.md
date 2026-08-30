@@ -67,6 +67,23 @@ projections of it; neither owns the system.
 
 ---
 
+## Replication
+
+A replica count means different things in different places, and the engine used
+to answer it one way: availability was `1 - (1-a)^n`, the chance that *at least
+one* replica is up. That is right for a stateless pool and wrong for anything
+consensus-backed, where a **majority** must be reachable.
+
+At three members with 0.99 per-replica availability, that understated
+unavailability by 298×. Worse than the magnitude was the direction: the old
+model said a second member improves availability, when for a quorum it makes
+things worse — you have doubled the machines that must both be up.
+
+`capacity.replication` is now `stateless` (default, unchanged), `leader`
+(failover, which is neither instant nor certain) or `quorum` (the binomial
+tail). The arithmetic is checked against a simulation of independent replica
+failures, the same way the discrete-event engine is checked against Erlang-C.
+
 ## The benchmark
 
 `npm run benchmark` — 100 architectures × 10 operating conditions, all 1,000

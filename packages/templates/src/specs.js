@@ -325,7 +325,7 @@ export const SPECS = [
     'apps>flag-cdn>evaluator>flag-cache>flag-store; apps>edge>evaluator; admin-api>flag-store; evaluator>audit-stream',
     'Evaluated on every request in every service, so it needs an availability figure most teams have never had to hit.'],
   ['config-discovery', 'Config and service discovery', 'Platform & infrastructure', 30000, 100, 0.995, 50000,
-    'client:services, lb:edge, registry:discovery*2, config:config-server*3, zk:consensus*3, cache:local-cache, nosql:store*2',
+    'client:services, lb:edge, registry:discovery*3, config:config-server*3, zk:consensus*3, cache:local-cache, nosql:store*2',
     'services>edge>discovery>local-cache>store; services>edge>config-server>consensus; config-server>store',
     'The control plane everything else assumes is up. Model it down and half the estate becomes unreachable in a way no dashboard predicts.'],
   ['observability-stack', 'Observability stack', 'Platform & infrastructure', 30000, 800, 0.995, 100000,
