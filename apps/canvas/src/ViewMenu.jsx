@@ -17,7 +17,7 @@ export { PALETTES } from './persist.js'
 
 export default function ViewMenu({
   onArrange, onFit, stepNumbers, setStepNumbers, theme, cycleTheme,
-  palette, setPalette, srMode, setSrMode,
+  palette, setPalette, srMode, setSrMode, triView, setTriView,
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -70,6 +70,7 @@ export default function ViewMenu({
           {item('⧉ Arrange', 'Clean left-to-right layers with fewer crossing lines', onArrange)}
           {item('⤢ Fit', 'Fit the whole diagram in view', onFit)}
           {item('①②③ Step numbers', 'Number the connections in request order', () => setStepNumbers(!stepNumbers), stepNumbers)}
+          {item('⫼ Tri-view', 'Canvas, the IR and the inspector side by side', () => setTriView(!triView), triView)}
           {item(
             dark ? '☀️ Light mode' : '🌙 Dark mode',
             surfaced

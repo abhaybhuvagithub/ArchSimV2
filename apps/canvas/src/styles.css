@@ -942,3 +942,64 @@ kbd {
   .node.selected rect, .node .changering { animation: none !important; }
   .spotlight, .tourcard, .dist .fill { transition: none !important; }
 }
+
+/* ── tri-view: canvas, the IR, the inspector ──────────────────────────────
+   The spec's proportions are 40/30/30. The palette does not get a column in
+   that arrangement — four columns at this width is not a layout, it is a set of
+   slots — so in tri-view it collapses to a rail the canvas overlays. Below the
+   breakpoint where the side panels already disappear, tri-view is moot and the
+   ordinary single-canvas grid applies. */
+.body.triview { grid-template-columns: 240px minmax(0, 1fr) minmax(0, 22vw) 328px; }
+
+.irpanel {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--panel); border-right: 1px solid var(--border);
+}
+.irhead {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2); border-bottom: 1px solid var(--border);
+}
+.irhead h4 {
+  margin: 0; font-family: var(--label-font); text-transform: var(--label-tt);
+  letter-spacing: var(--label-ls); font-weight: var(--label-weight); font-size: 11px; color: var(--muted);
+}
+.irmeta { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint, var(--muted)); }
+
+/* Scrolls down, never across — the same rule the palette and the deck follow.
+   A long line is clipped rather than pushing the column wider. */
+.irbody { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--sp-2) 0; }
+
+.irline { display: flex; gap: var(--sp-2); padding: 0 var(--sp-3) 0 var(--sp-1); cursor: default; }
+.irline code {
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5;
+  white-space: pre; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.irnum {
+  font-family: var(--font-mono); font-size: 10.5px; line-height: 1.5; color: var(--border);
+  min-width: 3ch; text-align: right; user-select: none; flex: none;
+  font-variant-numeric: tabular-nums;
+}
+/* Hover is the live link to the canvas, so it uses the simulated colour rather
+   than the accent: this is the model's own document, not a control. */
+.irline.hot { background: color-mix(in srgb, var(--twin-sim) 16%, transparent); cursor: pointer; }
+.irline.hot .irnum { color: var(--twin-sim); }
+.irline.sel { box-shadow: inset 2px 0 0 var(--accent); }
+
+.irfoot {
+  margin: 0; padding: var(--sp-2) var(--sp-3); border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--muted); line-height: 1.45;
+}
+
+/* The other half of the link. A hovered node is outlined in the same colour the
+   IR lines take, so the eye connects the two without being told. */
+.node.hovered > rect:first-of-type,
+.node.hovered > rect:nth-of-type(1) { stroke: var(--twin-sim); stroke-width: 2; }
+
+@media (max-width: 1400px) {
+  /* The IR column stops being readable before the inspector does. */
+  .body.triview { grid-template-columns: 240px minmax(0, 1fr) 328px; }
+  .body.triview .irpanel { display: none; }
+}
+@media (max-width: 1100px) {
+  .body.triview { grid-template-columns: 1fr; }
+}

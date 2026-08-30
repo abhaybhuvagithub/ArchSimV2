@@ -16,6 +16,7 @@ import ArrangePanel from './ArrangePanel.jsx'
 import { tidyIfWorse, rankLayouts, requestOrder } from './arrange.js'
 import ViewMenu, { TextEquivalent, PALETTES } from './ViewMenu.jsx'
 import Palette from './Palette.jsx'
+import IRPanel from './IRPanel.jsx'
 import { autoLayout } from './layout.js'
 import { EXAMPLE_PLAN, EXAMPLE_PLAN_PR, EXAMPLE_HCL, EXAMPLE_K8S, EXAMPLE_CFN, EXAMPLE_SLOS } from './examples.js'
 import Verdict from './Verdict.jsx'
@@ -79,6 +80,13 @@ export default function App() {
   const [stepNumbers, setStepNumbers] = useState(() => persist.read('stepNumbers', false))
   const [palette, setPaletteState] = useState(() => persist.read('palette', 'kesar'))
   const [srMode, setSrModeState] = useState(() => persist.read('srMode', false))
+  // Tri-view puts the IR and the twin beside the canvas. It is a mode rather
+  // than a replacement: three columns is the right shape for reading a design
+  // and the wrong one for drawing it, and the canvas loses a third of its width.
+  const [triView, setTriViewState] = useState(() => persist.read('triView', true))
+  const setTriView = (v) => { setTriViewState(v); persist.write('triView', v) }
+  // Shared between the canvas and the IR view, in both directions.
+  const [hovered, setHovered] = useState(null)
   const [keysOpen, setKeysOpen] = useState(false)
   const [tourStep, setTourStep] = useState(null)
   const [restore, setRestore] = useState(null)
@@ -536,6 +544,8 @@ export default function App() {
             setPalette={setPaletteState}
             srMode={srMode}
             setSrMode={setSrModeState}
+            triView={triView}
+            setTriView={setTriView}
           />
           <button id="guide-btn" className="menubtn" onClick={startTour} title="Replay the guided tour — G">◷ Guide/Tour</button>
           <button id="templates-btn" onClick={() => setGallery(true)} title="Browse 100 architecture templates — L">Templates</button>
@@ -591,7 +601,7 @@ export default function App() {
       {importErr && <div className="banner error">Could not read that: {importErr}</div>}
       {validation.errors.length > 0 && <div className="banner error">{validation.errors.length} IR error(s): {validation.errors[0].path} {validation.errors[0].msg}</div>}
 
-      <div className="body">
+      <div className={triView ? 'body triview' : 'body'}>
         <Palette
           onAdd={addNode}
           onConnectStranded={connectOrphans}
@@ -628,6 +638,7 @@ export default function App() {
         >
           <Canvas ref={canvasApi} ir={ir} frame={frame} ghosts={ghosts} selected={selected} multi={multi}
                   search={search} changed={changed} stepNumbers={stepNumbers}
+                  hovered={hovered} onHover={setHovered}
                   onSelect={onSelectNode} onMove={onMove} onConnect={onConnect}
                   onViewChange={setCanvasView} />
 
@@ -648,6 +659,10 @@ export default function App() {
             <button className="iconbtn" onClick={() => doExport('png')} disabled={busyExport} title="Export as PNG" aria-label="Export the canvas as a PNG">↓</button>
           </div>
         </main>
+
+        {triView && (
+          <IRPanel ir={ir} hovered={hovered} onHover={setHovered} selected={selected} onSelect={onSelectNode} />
+        )}
 
         <aside className="side">
           <Inspector ir={ir} nodeId={selected} onChange={onNodeChange} onDelete={onDelete} drift={drift} onCalibrate={onCalibrate} />

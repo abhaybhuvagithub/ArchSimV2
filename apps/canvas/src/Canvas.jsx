@@ -22,6 +22,9 @@ const MAX_Z = 2.6
 const Canvas = forwardRef(function Canvas({
   ir, frame, ghosts = [], selected, multi = [], search = '', changed = null,
   stepNumbers = false,
+  // The hovered node is shared state, not local: hovering here highlights the
+  // node's lines in the IR view, and hovering a line there highlights it here.
+  hovered = null, onHover,
   onSelect, onMove, onConnect, onViewChange,
 }, apiRef) {
   const svgRef = useRef(null)
@@ -271,11 +274,14 @@ const Canvas = forwardRef(function Canvas({
             linkFrom === n.id ? 'linking' : '',
             isChanged ? 'changed' : '',
             search.trim() && !matches(n) ? 'dimmed' : '',
+            hovered === n.id ? 'hovered' : '',
             heat === null ? '' : heat > 0.85 ? 'hot' : heat > 0.6 ? 'warm' : 'cool',
           ].filter(Boolean).join(' ')
           return (
             <g key={n.id} className={cls} transform={`translate(${p.x} ${p.y})`}
-               onPointerDown={onPointerDownNode(n)} onClick={finishLink(n)} style={{ cursor: 'grab' }}>
+               onPointerDown={onPointerDownNode(n)} onClick={finishLink(n)}
+               onPointerEnter={() => onHover?.(n.id)} onPointerLeave={() => onHover?.(null)}
+               style={{ cursor: 'grab' }}>
               {isChanged && <rect className="changering" x="-5" y="-5" width={W + 10} height={H + 10} rx="12" />}
               <rect width={W} height={H} rx="8" />
               {modelled && <rect width={W} height={H} rx="8" fill="url(#modelled)" opacity="0.28" pointerEvents="none" />}

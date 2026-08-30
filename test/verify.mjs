@@ -63,6 +63,7 @@ import { PALETTES } from '../apps/canvas/src/persist.js'
 
 import { HCL_CORPUS, K8S_CORPUS, REAL_WORLD_CORPUS } from './corpus.mjs'
 import { PROFILES, TARGET_UTIL, KNEE } from './benchmark.mjs'
+import { irDocument, irLineRanges, ownerOfLine } from '../apps/canvas/src/irview.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8')
@@ -2464,6 +2465,72 @@ check('the candidate list is 1000 rows and says how many are distinct', () => {
   // ever made it approach 1000, the honesty in the README would be wrong.
   const distinct = Number(m[1])
   if (!(distinct > 50 && distinct < 300)) throw new Error(`distinct shapes = ${distinct}, which makes the README's claim wrong`)
+  return true
+})
+
+section('The IR view — the source of truth, made visible')
+
+check('every node and edge has a line range in the document', () => {
+  const ir = template('checkout-flow')
+  const doc = irDocument(ir)
+  for (const n of ir.nodes) if (!doc.ranges.has(n.id)) throw new Error(`node ${n.label} has no lines`)
+  for (const e of ir.edges) if (!doc.ranges.has(e.id)) throw new Error(`edge ${e.id} has no lines`)
+  return true
+})
+
+check("a node's range covers its whole object, nested parts included", () => {
+  const ir = template('checkout-flow')
+  const doc = irDocument(ir)
+  const n = ir.nodes[0]
+  const { start, end } = doc.ranges.get(n.id)
+  const body = doc.lines.slice(start, end + 1).join('\n')
+  // capacity is a nested object; a naive scan would end the range at its
+  // closing brace and cut the node in half.
+  if (!body.includes(`"id": "${n.id}"`)) throw new Error('range does not contain the id')
+  if (!body.includes('"capacity"')) throw new Error('range stops before capacity')
+  if (!body.includes('"provenance"')) throw new Error('range stops before the nested provenance object')
+  return end > start
+})
+
+check('a line inside a node belongs to the node, not to the document', () => {
+  const ir = template('checkout-flow')
+  const doc = irDocument(ir)
+  const n = ir.nodes[1]
+  const { start, end } = doc.ranges.get(n.id)
+  const mid = Math.floor((start + end) / 2)
+  return ownerOfLine(doc.ranges, mid) === n.id
+})
+
+check('braces inside strings do not break the scan', () => {
+  // An attrs value can hold anything. If the scanner counted braces inside
+  // quoted text, one Helm template or JSON blob in an attribute would shift
+  // every range after it.
+  const text = JSON.stringify({
+    nodes: [{ id: 'A', label: 'has { a brace', attrs: { tpl: '{{ .Chart.Name }}' } }, { id: 'B', label: 'plain' }],
+  }, null, 2)
+  const ranges = irLineRanges(text)
+  if (!ranges.has('A') || !ranges.has('B')) throw new Error('lost a node to a brace in a string')
+  const a = ranges.get('A'); const b = ranges.get('B')
+  if (!(a.end < b.start)) throw new Error(`ranges overlap: A ${a.start}-${a.end}, B ${b.start}-${b.end}`)
+  return true
+})
+
+check('the IR view is read-only', () => {
+  // The IR carries ULID identity and a content hash. A free-text editor over it
+  // would let someone break both in a way nothing downstream could recover
+  // from, so it is edited through the canvas and the inspector.
+  const src = read('apps/canvas/src/IRPanel.jsx')
+  if (/<(input|textarea)\b/.test(src) || /contentEditable/.test(src)) throw new Error('the IR panel offers an editor')
+  return src.includes('Read-only')
+})
+
+check('tri-view is a mode, and the layout still has one column when narrow', () => {
+  const css = read('apps/canvas/src/styles.css')
+  if (!/\.body\.triview \{ grid-template-columns:/.test(css)) throw new Error('no tri-view grid')
+  // Below the breakpoint the side panels already vanish, so three columns are
+  // moot; the page must fall back rather than squeeze.
+  const narrow = css.slice(css.indexOf('@media (max-width: 1100px)'))
+  if (!/\.body\.triview \{ grid-template-columns: 1fr; \}/.test(narrow)) throw new Error('tri-view does not collapse when narrow')
   return true
 })
 
