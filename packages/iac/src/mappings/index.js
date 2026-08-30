@@ -24,9 +24,34 @@ const STRUCTURAL = new Set([...AWS_STRUCTURAL, ...GCP_STRUCTURAL, ...AZURE_STRUC
 
 const extra = []
 
+/**
+ * What a mapping rule may supply. This is the extension point — `registerRules`
+ * takes these from any repo that wants its internal modules understood — so the
+ * shape is a contract, and a contract is worth stating in something the build
+ * checks rather than only in the comment at the top of aws.js.
+ *
+ * @typedef {object} MappingRule
+ * @property {{provider: string, type: string, when?: (attrs: any) => boolean}} match
+ * @property {string|null} [kind]      the canonical component this resource simulates as
+ * @property {(obj: any) => string} [kindOf] when the kind depends on the object —
+ *   a Kubernetes workload is whatever its image says it is
+ * @property {(attrs: any, addr?: string) => string} [label]
+ * @property {(attrs: any, ctx: any) => any}   [capacity]  partial capacity model
+ * @property {(attrs: any, ctx: any) => any[]} [edges]     inferred connections, with confidence
+ * @property {(obj: any) => any} [attrs]      IR attrs derived from the resource
+ * @property {(obj: any) => any} [telemetry]  how to find this component in the metrics store
+ * @property {boolean} [edgeOnly]      contributes edges but is not itself a node
+ * @property {any} [patch]             which IR fields map to which HCL attribute
+ * @property {any} [emit]              how to generate this resource from scratch
+ */
+
+/** @param {MappingRule[]} rules */
 export function registerRules(rules) { extra.push(...rules) }
+
+/** @returns {MappingRule[]} */
 export function allRules() { return [...extra, ...RULES] }
 
+/** @returns {MappingRule|null} */
 export function findRule(provider, type, attrs = {}) {
   for (const rule of allRules()) {
     if (rule.match.provider !== provider) continue

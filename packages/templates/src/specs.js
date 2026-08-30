@@ -24,6 +24,20 @@ export const CATEGORIES = [
   'Enterprise & integration',
 ]
 
+/**
+ * A row of the table below. The comment at the top of this file described this
+ * shape; the typedef states it, so the compiler holds all hundred rows to it
+ * and the readers over in `index.js` get `name.toLowerCase()` checked rather
+ * than assumed.
+ *
+ * @typedef {[
+ *   id: string, name: string, category: string,
+ *   rps: number, p99Ms: number, availability: number, costUsd: number,
+ *   nodes: string, edges: string, about: string
+ * ]} TemplateSpec
+ *
+ * @type {TemplateSpec[]}
+ */
 export const SPECS = [
   /* ── Web & API ─────────────────────────────────────────────────────────── */
   ['url-shortener', 'URL shortener', 'Web & API', 12000, 400, 0.995, 200000,

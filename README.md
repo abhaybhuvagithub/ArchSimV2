@@ -71,7 +71,7 @@ projections of it; neither owns the system.
 
 | Package | What it is |
 |---|---|
-| [`@archsim/ir`](packages/ir) | ArchIR 2.0 — schema, validator, ULID identity, v1 migration, structural diff, three-way merge. Zero dependencies of any kind. |
+| [`@archsim/ir`](packages/ir) | ArchIR 2.0 — schema, validator, ULID identity, v1 migration, structural diff, three-way merge. |
 | [`@archsim/core`](packages/core) | The analytic engine, carried over from ArchSim 1.8: steady-state simulation, the 117-component catalog, chaos faults, the cost model, the Monte-Carlo runner, SLO evaluation and the convergent quick-fix engine. |
 | [`@archsim/iac`](packages/iac) | The bidirectional compiler. Terraform plan JSON, raw HCL, Kubernetes, CloudFormation/CDK, Pulumi and Helm charts in; surgical CST patches, drift reports and pull-request payloads back out. |
 | [`@archsim/des`](packages/des) | The discrete-event engine: G/G/c with bounded queues, retry storms, circuit breakers, thread starvation, partitions — validated against Erlang-C. |
@@ -79,6 +79,16 @@ projections of it; neither owns the system.
 | [`@archsim/templates`](packages/templates) | 100 reference architectures as IR — each sized from the catalog, with its own workload and SLOs, so the gate has an opinion the moment one opens. |
 | [`@archsim/cli`](packages/cli) | `archsim` — the headless engine and the CI gate. |
 | [`apps/canvas`](apps/canvas) | The studio. A consumer of the packages, not their owner. |
+
+Every package above except the canvas imports nothing but Node builtins and its
+siblings. That is not a style preference — it is what lets the CLI run on a
+build agent whose security team has to approve each package that lands on it.
+CI checks it two ways rather than trusting the table: `npm run deps` reads the
+import graph and rejects a third-party import, and a job installs the runtime
+packages alone with the registry switched off and gates a real estate with them.
+
+The canvas is the exception and says so: it ships through a bundler, where React
+is a build input rather than something installed on anyone's runner.
 
 ---
 

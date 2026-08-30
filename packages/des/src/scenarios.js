@@ -101,6 +101,10 @@ export function analyzeBreakers(result) {
  * starvation and retry amplification at the same time. A partition modelled as
  * a fast error would flatter the design.
  */
+/**
+ * @param {any} ir
+ * @param {{targetKind?: string, timeoutMs?: number}} [opts]
+ */
 export function partitionScenario(ir, { targetKind, timeoutMs = 2000 } = {}) {
   const victims = ir.nodes.filter((n) => (targetKind ? n.kind === targetKind : false))
   const node = {}
@@ -116,6 +120,10 @@ export function partitionScenario(ir, { targetKind, timeoutMs = 2000 } = {}) {
  * interesting — a breaker flapping, a storm feeding back, utilization past the
  * knee — and this runs that exact world through the DES for a time-resolved
  * trace. The two engines are rungs, and this is the rung change.
+ */
+/**
+ * @param {any} ir
+ * @param {{scenario?: any, workload?: any, seed?: number, horizonMs?: number, anchorSim?: any}} [opts]
  */
 export function escalate(ir, { scenario = { id: 'nominal', faults: [] }, workload, seed = 42, horizonMs = 60000, anchorSim = null } = {}) {
   const fx = compileFaults(scenario.faults || [], ir, anchorSim)

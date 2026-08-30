@@ -19,10 +19,14 @@ const NOFX = { capMul: 1, latMul: 1, drop: 0, noCache: false, dup: 0 }
 /**
  * @param ir       ArchIR (normalized)
  * @param totalRps offered load at the sources
- * @param opts.down    Set<NodeId> — replicas killed (one each)
- * @param opts.fx      injected chaos: {node:{id:{capMul,latMul,drop,dup,noCache}}, cut:Set<edgeId>, rpsMul}
- * @param opts.sample  per-node parameter sample from the Monte-Carlo runner
- *                     {id: {capMul, latMul}} — the honesty band, drawn
+ *
+ * @typedef {object} SimOpts
+ * @property {Set<string>} [down]  replicas killed, one each
+ * @property {any} [fx]     injected chaos: {node:{id:{capMul,latMul,drop,dup,noCache}}, cut:Set<edgeId>, rpsMul}
+ * @property {any} [sample] per-node parameter sample from the Monte-Carlo runner,
+ *                          {id: {capMul, latMul}} — the honesty band, drawn
+ *
+ * @param {SimOpts} [opts]
  */
 export function simulate(ir, totalRps, opts = {}) {
   const { down = new Set(), fx = null, sample = null } = opts

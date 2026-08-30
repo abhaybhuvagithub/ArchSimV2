@@ -52,13 +52,19 @@ export function unifiedDiff(file, before, after, context = 3) {
 /**
  * The complete payload for a pull request.
  *
- * @param opts.emit    the result of `emitChanges`
- * @param opts.sources `{ [file]: originalText }`, only needed for files the
- *   emitter did not itself return a `before` for
- * @param opts.ir      the IR the change produces
- * @param opts.base    the IR before the change, if there is one
- * @param opts.gate    a gate result, if one was run — the body then states the verdict
- * @param opts.author  `{ name, email }` for the commit trailer
+ *
+ * @typedef {object} PrOpts
+ * @property {any}    emit      the result of `emitChanges`
+ * @property {Record<string,string>} [sources] `{ [file]: originalText }`, only needed
+ *   for files the emitter did not itself return a `before` for
+ * @property {any}    ir        the IR the change produces
+ * @property {any}    [base]    the IR before the change, if there is one
+ * @property {any}    [gate]    a gate result, if one was run — the body then states the verdict
+ * @property {any}    [author]  `{ name, email }` for the commit trailer
+ * @property {string} [branch]  overrides the derived branch name
+ * @property {string} [title]   overrides the derived title
+ *
+ * @param {PrOpts} opts
  */
 export function pullRequestPayload(opts) {
   const { emit, sources = {}, ir, base = null, gate = null } = opts

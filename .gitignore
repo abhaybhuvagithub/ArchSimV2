@@ -5,3 +5,6 @@ dist/
 .archsim-cache/
 gate-report.*
 coverage/
+
+# The single-file artifact page is a build output of `npm run artifact`.
+archsim-studio.html

@@ -110,6 +110,10 @@ function cell(r, metric) {
 
 /** "checkout 3→4, then 4→5, then 5→6" is one decision, not three. */
 function collapseSteps(steps) {
+  // `match` starts as an exec result and is then rewritten as a plain array of
+  // the same four captures, so the type is those four captures — not "whatever
+  // exec happened to return".
+  /** @type {{text: string, match: string[]|null}[]} */
   const out = []
   for (const s of steps) {
     const m = /^(.*?) (\d+)→(\d+) replicas$/.exec(s.describe)

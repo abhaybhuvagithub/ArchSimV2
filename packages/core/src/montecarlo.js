@@ -25,11 +25,15 @@ export const BASELINE_SCENARIO = { id: 'nominal', faults: [] }
 
 /**
  * @param ir        ArchIR
- * @param opts.runs      number of sampled worlds (default 500)
- * @param opts.seed      integer seed (default 42)
- * @param opts.scenarios [{id, faults:[{fault, target?}]}] — 'nominal' is always included
- * @param opts.workloads override ir.workloads
- * @param opts.jitter    false to disable parameter sampling (point estimate)
+ *
+ * @typedef {object} McOpts
+ * @property {number}  [runs]      number of sampled worlds (default 500)
+ * @property {number}  [seed]      integer seed (default 42)
+ * @property {any[]}   [scenarios] [{id, faults:[{fault, target?}]}] — 'nominal' is always included
+ * @property {any[]}   [workloads] override ir.workloads
+ * @property {boolean} [jitter]    false to disable parameter sampling (point estimate)
+ *
+ * @param {McOpts} [opts]
  */
 export function runMonteCarlo(ir, opts = {}) {
   const runs = Math.max(1, opts.runs ?? 500)

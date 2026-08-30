@@ -25,8 +25,13 @@ const CACHEABLE_BEHIND = ['sql', 'nosql', 'search', 'graph', 'ledger']
 
 /**
  * @param ir      the failing IR
- * @param opts.mcOpts  Monte-Carlo options (runs are reduced automatically)
- * @param opts.maxSteps default 3 — a fix nobody will read is not a fix
+ *
+ * @typedef {object} QuickfixOpts
+ * @property {any}    [mcOpts]     Monte-Carlo options (runs are reduced automatically)
+ * @property {number} [maxSteps]   default 3 — a fix nobody will read is not a fix
+ * @property {any}    [thresholds] SLO thresholds, passed through to the evaluator
+ *
+ * @param {QuickfixOpts} [opts]
  */
 export function findCheapestFix(ir, opts = {}) {
   const mcOpts = { ...(opts.mcOpts || {}), runs: Math.min(opts.mcOpts?.runs ?? 200, 200) }

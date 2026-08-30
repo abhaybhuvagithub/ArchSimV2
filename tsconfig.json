@@ -1,0 +1,19 @@
+{
+  "//": "The code already carries JSDoc. This makes the compiler read it, so a type written in a comment is a claim the build checks rather than a note that rots. No emit, ever — the CLI ships as the .js files it is written in.",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": ["node"],
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "jsx": "react-jsx",
+    "resolveJsonModule": true
+  },
+  "include": ["packages/*/src/**/*.js", "packages/cli/bin/*.mjs", "scripts/*.mjs"],
+  "exclude": ["node_modules", "**/node_modules"]
+}

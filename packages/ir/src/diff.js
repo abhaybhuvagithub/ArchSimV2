@@ -5,6 +5,14 @@
 // address, so a re-plan of the same repo produces the same ids) and by binding
 // address second, which is what survives a node being rebuilt from scratch.
 
+/**
+ * The fields a diff compares, each paired with the accessor that reads it. The
+ * pair is a tuple, not a list of two loosely-related things — saying so keeps
+ * `get` callable instead of `string | function`.
+ *
+ * @typedef {[path: string, get: (x: any) => any]} FieldProbe
+ * @type {FieldProbe[]}
+ */
 const CAP_FIELDS = [
   ['capacity.replicas', (n) => n.capacity.replicas],
   ['capacity.capPerReplica', (n) => n.capacity.capPerReplica],
@@ -16,6 +24,7 @@ const CAP_FIELDS = [
   ['label', (n) => n.label],
 ]
 
+/** @type {FieldProbe[]} */
 const EDGE_FIELDS = [
   ['callSemantics', (e) => e.callSemantics],
   ['protocol', (e) => e.protocol],

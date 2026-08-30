@@ -30,10 +30,15 @@ const ctxBase = { seed: (kind) => capacityFor(kind) }
 
 /**
  * @param plan   parsed `terraform show -json` output (plan or state)
- * @param opts.file  the file it came from, for bindings
- * @param opts.managed default 'observed' — read-only until the user opts in.
+ *
+ * @typedef {object} IngestOpts
+ * @property {string} [file]    the file it came from, for bindings
+ * @property {string} [name]    a name for the resulting IR
+ * @property {string} [managed] default 'observed' — read-only until the user opts in.
  *   This is the adoption unlock: a brownfield estate renders without ArchSim
  *   asking permission to own anyone's Terraform.
+ *
+ * @param {IngestOpts} [opts]
  */
 export function planJsonToIR(plan, opts = {}) {
   const file = opts.file || 'tfplan.json'
@@ -61,7 +66,7 @@ export function planJsonToIR(plan, opts = {}) {
     }
     if (rule?.edgeOnly) {
       connectors.add(res.address)
-      for (const h of rule.edges?.(attrs, edgeCtx(res, resources)) || []) hints.push({ from: h.from || res.address, to: h.to, confidence: h.confidence, reason: h.reason, protocol: h.protocol })
+      for (const h of rule.edges?.(attrs, edgeCtx()) || []) hints.push({ from: h.from || res.address, to: h.to, confidence: h.confidence, reason: h.reason, protocol: h.protocol })
       report.resources.push({ address: res.address, type, disposition: 'edge-only' })
       continue
     }
@@ -75,7 +80,7 @@ export function planJsonToIR(plan, opts = {}) {
     }
 
     const seeded = capacityFor(kind, rule ? {} : { provenanceCls: 'modeled', basis: `no mapping rule for '${type}'; simulated as a generic component` })
-    const ruleCap = rule?.capacity?.(attrs, { ...ctxBase, address: res.address, ...edgeCtx(res, resources) }) || {}
+    const ruleCap = rule?.capacity?.(attrs, { ...ctxBase, address: res.address, ...edgeCtx() }) || {}
     const cap = { ...seeded, ...ruleCap }
     // A count-expanded resource states its own replica count; a single resource
     // that models an HA pair (multi_az, a replication group) lets the rule say so.
@@ -95,7 +100,7 @@ export function planJsonToIR(plan, opts = {}) {
     nodesByAddress.set(res.address, node)
     report.resources.push({ address: res.address, type, disposition: rule ? 'mapped' : 'unmapped', kind })
 
-    for (const h of rule?.edges?.(attrs, { ...ctxBase, address: res.address, ...edgeCtx(res, resources) }) || []) {
+    for (const h of rule?.edges?.(attrs, { ...ctxBase, address: res.address, ...edgeCtx() }) || []) {
       hints.push({ from: h.from || res.address, to: h.to, confidence: h.confidence, reason: h.reason, protocol: h.protocol })
     }
     if (attrs.tags?.['archsim.io/edge']) annotated.push({ address: res.address, annotations: attrs.tags })

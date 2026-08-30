@@ -9,7 +9,10 @@
 
 import { sizeFromK8sResources } from '../sizing.js'
 
-/** image → canonical kind. Ordered: first match wins, so be specific first. */
+/**
+ * image → canonical kind. Ordered: first match wins, so be specific first.
+ * @type {[re: RegExp, kind: string][]}
+ */
 export const IMAGE_HINTS = [
   [/(^|\/)(postgres|postgresql|mysql|mariadb|cockroach)/i, 'sql'],
   [/(^|\/)(redis|valkey|memcached)/i, 'cache'],

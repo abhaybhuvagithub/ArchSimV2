@@ -88,9 +88,12 @@ export function validateIR(ir, { kinds = null } = {}) {
 export function assertValid(ir, opts) {
   const r = validateIR(ir, opts)
   if (!r.ok) {
-    const e = new Error(`invalid ArchIR:\n${r.errors.map((x) => `  ${x.path}: ${x.msg}`).join('\n')}`)
-    e.errors = r.errors
-    throw e
+    // The message is for a human; `errors` is for a caller that wants to
+    // point at the offending node rather than print a paragraph.
+    throw Object.assign(
+      new Error(`invalid ArchIR:\n${r.errors.map((x) => `  ${x.path}: ${x.msg}`).join('\n')}`),
+      { errors: r.errors },
+    )
   }
   return r
 }

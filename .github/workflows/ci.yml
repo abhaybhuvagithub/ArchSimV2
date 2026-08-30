@@ -16,10 +16,63 @@ jobs:
         with:
           node-version: '20'
       - run: npm install
+
+      # First, because it is the cheapest and it guards the promise everything
+      # else rests on: the CLI runs anywhere Node runs, with nothing installed.
+      - name: dependency boundary
+        run: npm run deps
+
+      # The JSDoc the code already carries, read by a compiler. Types written in
+      # comments rot silently; these do not.
+      - name: types
+        run: npm run typecheck
+
       # The suite is the strategy: every claim the README makes is one of these
       # checks, and they run on every push.
       - run: npm run verify
       - run: npm run build
+
+      # What people download before they can look at anything. The step prints
+      # the per-package breakdown either way, so a regression names its cause.
+      - name: bundle budget
+        run: npm run budget
+
+  airgapped:
+    name: the runner installs with no registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # "Zero dependencies" is the claim the whole CI-runner story rests on, and
+      # `npm install` at the repo root does not test it — that pulls React for
+      # the canvas and the dev toolchain, and would keep passing long after
+      # someone added a dependency to the engine.
+      #
+      # So: take only the packages the CLI needs, install with the registry
+      # switched off, and gate a real estate. If anything in the runtime path
+      # ever needs fetching, this fails and nothing else does.
+      - name: install the runtime packages alone, offline
+        run: |
+          mkdir -p /tmp/runtime
+          cp -r packages examples /tmp/runtime/
+          echo '{"name":"archsim-runtime","private":true,"type":"module","workspaces":["packages/*"]}' \
+            > /tmp/runtime/package.json
+          cd /tmp/runtime
+          npm install --offline --no-audit --no-fund
+          # Nothing but the workspace links may appear.
+          EXTRA=$(ls node_modules | grep -v '^@archsim$' | grep -v '^\.' || true)
+          if [ -n "$EXTRA" ]; then
+            echo "the runtime path pulled third-party packages:"; echo "$EXTRA"; exit 1
+          fi
+      - name: it gates
+        run: |
+          cd /tmp/runtime
+          node packages/cli/bin/archsim.mjs gate \
+            --ir examples/archsim/checkout.lock.json \
+            --slo examples/archsim/slo.yaml \
+            --runs 200 --no-warn-exit
 
   dogfood:
     name: gate ArchSim's own example estate

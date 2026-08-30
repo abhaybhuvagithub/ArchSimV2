@@ -221,7 +221,14 @@ export function evaluateConditions(template, parameters) {
  * One or more CloudFormation templates → IR.
  *
  * @param inputs  `[{ file, text }]`, or a single already-parsed template object
- * @param opts.managed  'observed' (default) | 'partial' | 'full'
+ *
+ * @typedef {object} CfnOpts
+ * @property {string} [managed]   'observed' (default) | 'partial' | 'full'
+ * @property {string} [file]      used when `inputs` is a single parsed template
+ * @property {string} [name]      a name for the resulting IR
+ * @property {string} [stackName] the CloudFormation stack these resources belong to
+ *
+ * @param {CfnOpts} [opts]
  */
 export function cfnToIR(inputs, opts = {}) {
   const managed = opts.managed || 'observed'

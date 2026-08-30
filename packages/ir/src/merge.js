@@ -10,6 +10,39 @@
 //   both changed, different      → CONFLICT — surfaced, never auto-resolved
 //                                  for anything that costs money
 //
+
+/**
+ * A conflict the merge refused to resolve. `costly` is the field that matters:
+ * where the two sides differ in money or capacity, no winner is picked
+ * automatically, however obvious the winner looks.
+ *
+ * @typedef {object} Conflict
+ * @property {'node'|'edge'} kind
+ * @property {string} id
+ * @property {string} [label]
+ * @property {string} field
+ * @property {any} base
+ * @property {any} canvas
+ * @property {any} code
+ * @property {boolean} [costly]
+ * @property {string} [why]
+ */
+
+/**
+ * A decision it did resolve — either about a whole node, which explains itself
+ * in `what`, or a single field moving one way, which names the field and both
+ * values.
+ *
+ * @typedef {object} Decision
+ * @property {string} id
+ * @property {string} action
+ * @property {'canvas'|'code'|'both'} [side]
+ * @property {string} [what]
+ * @property {string} [field]
+ * @property {any} [from]
+ * @property {any} [to]
+ */
+
 // The last line is the rule that matters. A tool that silently picks a winner
 // on `replicas` is a tool that will one day halve someone's database fleet and
 // be technically correct about it.
@@ -40,7 +73,9 @@ export function threeWayMerge(baseIR, canvasIR, codeIR) {
   const canvas = normalizeIR(canvasIR)
   const code = normalizeIR(codeIR)
 
+  /** @type {Conflict[]} */
   const conflicts = []
+  /** @type {Decision[]} */
   const decisions = []
   const merged = normalizeIR({ ...base, nodes: [], edges: [] })
   merged.meta = { ...base.meta, ...canvas.meta, updatedAt: canvas.meta.updatedAt }

@@ -36,13 +36,19 @@ export const BREAKER_OPEN = 'breaker'
 export const FAILED = 'failed'
 
 /**
- * @param ir       ArchIR
- * @param opts.workload   Workload (arrival dist + rps)
- * @param opts.horizonMs  simulated milliseconds (default 60_000)
- * @param opts.seed       integer
- * @param opts.fx         compiled faults from @archsim/core
- * @param opts.frameMs    telemetry frame interval (default 1000)
- * @param opts.concurrencyMode 'derive' (default) | 'declared'
+ * @typedef {object} DesOpts
+ * @property {any}    [workload]  workload: arrival distribution and rps
+ * @property {number} [horizonMs] simulated milliseconds (default 60_000)
+ * @property {number} [seed]      integer seed (default 42)
+ * @property {any}    [fx]        compiled faults from the core package
+ * @property {number} [frameMs]   telemetry frame interval (default 1000)
+ * @property {number} [maxEvents] hard stop, so a pathological design cannot hang the process
+ * @property {'derive'|'declared'} [concurrencyMode]
+ *
+ * @param {any} ir ArchIR
+ * @param {DesOpts} [opts]
+ *
+ * On concurrencyMode:
  *   derive   — c = replicas × capPerReplica × serviceTime, i.e. Little's law at
  *              the capacity ceiling. This is what makes the DES and the analytic
  *              engine agree below the knee, which is a stated validation gate.

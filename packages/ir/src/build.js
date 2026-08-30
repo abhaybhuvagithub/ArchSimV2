@@ -30,6 +30,25 @@ export function createIR(meta = {}) {
 /**
  * Build an IR node. `capacityFor(kind)` lets the caller seed from the catalog
  * without the IR package depending on the catalog.
+ *
+ * Every field is optional and the body says what each one falls back to. That
+ * is worth stating in a type rather than only in the code, because the six
+ * ingest paths each supply a different subset and the compiler is the only
+ * thing that reads all six.
+ *
+ * @typedef {object} NodeSpec
+ * @property {string} [id]        ULID; minted when absent, never derived from the label
+ * @property {string} [kind]      catalog kind (default 'custom')
+ * @property {string} [label]     human name (defaults to the kind)
+ * @property {any}    [capacity]  overrides merged over the catalog seed
+ * @property {any[]}  [bindings]  where in the source this node came from
+ * @property {any}    [telemetry]
+ * @property {any}    [layout]
+ * @property {any}    [attrs]
+ * @property {any}    [overrides]
+ *
+ * @param {NodeSpec} spec
+ * @param {(kind: string) => any} [capacityFor] catalog lookup, injected so this package stays dependency-free
  */
 export function irNode({ id, kind, label, capacity, bindings, telemetry, layout, attrs, overrides }, capacityFor) {
   const seeded = capacityFor ? capacityFor(kind) : null
@@ -46,6 +65,26 @@ export function irNode({ id, kind, label, capacity, bindings, telemetry, layout,
   }
 }
 
+/**
+ * Build an IR edge. Only `from` and `to` are meaningful without a default —
+ * an edge that does not say what it connects is not an edge.
+ *
+ * @typedef {object} EdgeSpec
+ * @property {string} [id]   defaults to a ULID derived from `from->to`
+ * @property {string} from
+ * @property {string} to
+ * @property {string} [callSemantics] 'sync' (default) or 'async'
+ * @property {string} [protocol]
+ * @property {number} [weight]
+ * @property {number} [timeoutMs]
+ * @property {any}    [retry]
+ * @property {any}    [breaker]
+ * @property {string} [confidence]  'high' when read from source, lower when inferred
+ * @property {number} [readFrac]
+ * @property {any}    [attrs]
+ *
+ * @param {EdgeSpec} spec
+ */
 export function irEdge({ id, from, to, callSemantics, protocol, weight, timeoutMs, retry, breaker, confidence, readFrac, attrs }) {
   return {
     id: id || ulidFrom(`${from}->${to}`),

@@ -8,13 +8,24 @@
     "packages/*",
     "apps/canvas"
   ],
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "verify": "node test/verify.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "deps": "node scripts/deps.mjs",
+    "budget": "node scripts/budget.mjs",
+    "check": "npm run deps && npm run typecheck && npm run verify",
     "gate": "node packages/cli/bin/archsim.mjs",
     "dev": "npm --workspace @archsim/canvas run dev",
     "build": "npm --workspace @archsim/canvas run build",
-    "preview": "npm --workspace @archsim/canvas run preview"
+    "preview": "npm --workspace @archsim/canvas run preview",
+    "artifact": "npm run build && node scripts/artifact.mjs && node scripts/budget.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
 }

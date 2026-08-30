@@ -2211,6 +2211,79 @@ check('a template gates end to end through runGate', () => {
   return r.evaluation.results.length === 4 && [0, 1, 2].includes(r.exitCode)
 })
 
+section('Tooling — the checks that keep the other checks honest')
+
+check('the dependency boundary holds', () => {
+  // Not a re-implementation of scripts/deps.mjs — the script itself, run. If it
+  // ever stops agreeing with the README, this is where you hear about it.
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts/deps.mjs')], { cwd: ROOT, stdio: 'pipe' })
+  return true
+})
+
+check('no runtime package declares a third-party dependency', () => {
+  const dirs = fs.readdirSync(path.join(ROOT, 'packages'))
+  for (const d of dirs) {
+    const p = path.join(ROOT, 'packages', d, 'package.json')
+    if (!fs.existsSync(p)) continue
+    const deps = Object.keys(JSON.parse(fs.readFileSync(p, 'utf8')).dependencies || {})
+    const foreign = deps.filter((n) => !n.startsWith('@archsim/'))
+    if (foreign.length) throw new Error(`@archsim/${d} depends on ${foreign.join(', ')}`)
+  }
+  return true
+})
+
+check('the canvas is the only package allowed third-party imports', () => {
+  const src = read('scripts/deps.mjs')
+  return src.includes("'apps/canvas'") && /BUNDLED/.test(src)
+})
+
+check('the JSDoc typechecks', () => {
+  // The whole point of writing types in comments is that something reads them.
+  // tsc is a devDependency, so skip rather than fail where it is absent — CI
+  // installs it and runs `npm run typecheck` as its own step regardless.
+  const tsc = path.join(ROOT, 'node_modules/.bin/tsc')
+  if (!fs.existsSync(tsc)) return true
+  execFileSync(tsc, ['-p', path.join(ROOT, 'tsconfig.json')], { cwd: ROOT, stdio: 'pipe' })
+  return true
+})
+
+check('the typecheck is configured to actually read the JSDoc', () => {
+  const cfg = JSON.parse(stripComments(read('tsconfig.json')))
+  return cfg.compilerOptions.checkJs === true
+    && cfg.compilerOptions.allowJs === true
+    && cfg.compilerOptions.noEmit === true
+})
+
+check('every check CI runs is a script anyone can run locally', () => {
+  const pkg = JSON.parse(read('package.json'))
+  const ci = read('.github/workflows/ci.yml')
+  for (const s of ['deps', 'typecheck', 'verify', 'budget']) {
+    if (!pkg.scripts[s]) throw new Error(`package.json has no '${s}' script`)
+    if (!ci.includes(`npm run ${s}`)) throw new Error(`CI never runs 'npm run ${s}'`)
+  }
+  return true
+})
+
+check('the bundle budget names what grew, not just that it grew', () => {
+  // A budget that reports one number makes finding the cause your problem. This
+  // one decodes the source map and attributes the bytes.
+  const src = read('scripts/budget.mjs')
+  return src.includes('attribute(') && src.includes('.map') && /gzipSync/.test(src)
+})
+
+check('the budget has headroom but is not decorative', () => {
+  const src = read('scripts/budget.mjs')
+  const m = src.match(/const BUDGET = \{([\s\S]*?)\}/)
+  const budgets = [...m[1].matchAll(/(\w+):\s*([\d.]+)/g)].map(([, k, v]) => [k, Number(v)])
+  // Three assets, each with a real number. A budget of Infinity is not a budget.
+  return budgets.length === 3 && budgets.every(([, v]) => v > 0 && Number.isFinite(v))
+})
+
+check('CI proves the airgap rather than asserting it', () => {
+  const ci = read('.github/workflows/ci.yml')
+  return ci.includes('--offline') && /archsim\.mjs gate/.test(ci) && ci.includes('airgapped')
+})
+
 // ────────────────────────────────────────────────────────────────────────────
 await Promise.all(pending)
 process.stdout.write('\n\n')

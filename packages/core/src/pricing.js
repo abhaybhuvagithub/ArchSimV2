@@ -154,7 +154,7 @@ export const RATES = {
 const FALLBACK = { hourly: 0.08, base: 0, perM: 0, note: 'generic compute estimate' }
 
 export const yearsSincePriced = (now = new Date()) =>
-  (now - new Date(PRICED_AT + 'T00:00:00Z')) / (365.25 * 86400000)
+  (now.getTime() - new Date(PRICED_AT + 'T00:00:00Z').getTime()) / (365.25 * 86400000)
 
 /** ~3%/yr, the historical cloud list-price trend. A static table that never
  *  ages is a table that is quietly wrong; this one is loudly approximate. */

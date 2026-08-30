@@ -87,7 +87,7 @@ export function datadogSource({ site = 'api.datadoghq.com', apiKey, appKey, fetc
     ...queries,
   }
   const call = async (query, from, to) => {
-    const url = `https://${site}/api/v1/query?${new URLSearchParams({ query, from: Math.floor(from / 1000), to: Math.floor(to / 1000) })}`
+    const url = `https://${site}/api/v1/query?${new URLSearchParams({ query, from: String(Math.floor(from / 1000)), to: String(Math.floor(to / 1000)) })}`
     const res = await doFetch(url, { headers })
     if (!res.ok) throw new Error(`datadog ${res.status} ${res.statusText}`)
     return res.json()
