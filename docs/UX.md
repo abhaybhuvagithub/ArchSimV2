@@ -7,8 +7,16 @@ honoured — at different layers.** Material Design and Apple's HIG are opposed
 design languages; adopting Material's palette and shapes would have thrown away
 the v1 identity that was asked for one commit earlier. So the split is:
 
-- **Identity stays v1's** — Apple palette, system type, pill controls, generous
-  radii, the radial canvas.
+- **Identity stays v1's** — pill controls, generous radii, the radial canvas,
+  and — since the typography pass — v1's actual type system: IBM Plex Sans for
+  body, Space Grotesk for headings and the wordmark, IBM Plex Mono for code,
+  figures and every small label, uppercase at .09em tracking. Palettes are v1's
+  three: Kesar, Glow, Lilac.
+
+  > This bullet used to say "Apple palette, system type", which was wrong. I had
+  > described v1 from memory rather than from the page. Reading the live site
+  > settled it, and the correction is left visible here because a design doc
+  > that quietly rewrites its own history is worth less than one that does not.
 - **Behaviour becomes Google's** — Material 3's motion system (emphasised and
   standard easing, a real duration scale, shared-axis transitions), state layers
   on every interactive surface, elevation used to mean depth rather than
