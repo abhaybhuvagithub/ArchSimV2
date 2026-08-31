@@ -137,6 +137,11 @@ export function normalizeCapacity(c = {}) {
     // buys you. Default `stateless`, which is what every node was implicitly
     // assumed to be, so an IR that does not say keeps the old arithmetic.
     replication: REPLICATION.has(c.replication) ? c.replication : 'stateless',
+    // Round trip to a follower, including its own fsync. Absent, it is taken as
+    // the node's own service time — a follower does comparable work plus a
+    // network hop — which is a modelled figure and says so through provenance
+    // rather than pretending to be measured.
+    ...(c.replicationRttMs !== undefined ? { replicationRttMs: Math.max(0, num(c.replicationRttMs, 0)) } : {}),
     ...(c.cacheHit !== undefined ? { cacheHit: clamp(num(c.cacheHit, 0), 0, 1) } : {}),
     ...(c.source ? { source: true } : {}),
     provenance: { cls, basis: prov.basis || '', refs: prov.refs || [] },

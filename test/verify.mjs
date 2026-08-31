@@ -23,6 +23,7 @@ import {
   CATALOG, kinds, capacityFor, simulate, capacityReport, costReport, nodeCost, rateFor,
   compileFaults, FAULTS, runMonteCarlo, evaluateSLOs, structuralRisks, findCheapestFix,
   availabilityOf, quorumOf, quorumLatencyMul, atLeast,
+  orderStatQuantile, quorumWriteLatency, hedgeBenefit, lognormalQuantile, inverseAtLeast,
   ACRONYMS, ACRONYM_GROUPS, searchAcronyms,
   telemetryCoverage, telemetryNote, SIGNALS, SIGNAL_KINDS,
   rightSizePlan, rng, streamFor, bandDraw, percentile, isSourceNode, PRICED_AT,
@@ -2607,13 +2608,17 @@ check('the old arithmetic still applies to a stateless pool', () => {
   return true
 })
 
-check('quorum does not move the median, and says so', () => {
-  // The majority-th of an odd group is the median, so a quorum write's p50 is
-  // one replica's p50. Surprising enough to be worth asserting rather than
-  // leaving as a silent no-op in the hot path.
-  for (const n of [3, 5, 7]) if (Math.abs(quorumLatencyMul(n, 'quorum', 0.5) - 1) > 1e-9) throw new Error(`n=${n} moved the median`)
-  // The even case does move it, which is the other half of why even is bad.
-  return quorumLatencyMul(2, 'quorum', 0.5) > 1
+check('a quorum write does move the median — the earlier claim was wrong', () => {
+  // This check used to assert the opposite, and the assertion was the mistake
+  // written down. `quorumLatencyMul` compares the majority-th order statistic
+  // to the median and finds them equal, which is true and answers a different
+  // question: a quorum write is not one draw, it is the leader's work plus a
+  // round trip to other machines, and that term was simply missing.
+  const single = lognormalQuantile(2, 0.5, 0.5)
+  const quorum = quorumWriteLatency({ serviceMs: 2, rttMs: 4, replicas: 3, cv: 0.5, p: 0.5 })
+  if (!(quorum > single * 1.5)) throw new Error(`quorum p50 ${quorum.toFixed(2)} is not meaningfully above ${single.toFixed(2)}`)
+  // The old function is kept for the lesson, and still says what it said.
+  return Math.abs(quorumLatencyMul(3, 'quorum', 0.5) - 1) < 1e-9
 })
 
 check('the quorum kinds are a short, deliberate list', () => {
@@ -2954,6 +2959,113 @@ check('a dialog never grows past the window with its controls inside', () => {
   const foot = [...css.matchAll(/\.sheet \.sheetfoot \{[^}]*\}/g)].map((m) => m[0])
   if (!foot.some((b) => /flex-wrap:\s*wrap/.test(b))) throw new Error('the sheet footer does not wrap')
   return true
+})
+
+section('Order statistics — waiting for the k-th of m')
+
+check('the analytic order statistic matches a simulation', () => {
+  // The same standard as Erlang-C and the binomial tail: checked against the
+  // process itself, not against its own arithmetic.
+  const r = rng(11)
+  const draw = (med, cv) => {
+    const s = Math.sqrt(Math.log(1 + cv * cv))
+    let u = 0; let v = 0
+    while (u === 0) u = r()
+    while (v === 0) v = r()
+    return med * Math.exp(s * (Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)))
+  }
+  for (const [m, k, p] of [[2, 1, 0.5], [2, 1, 0.99], [4, 2, 0.5], [4, 2, 0.99], [5, 3, 0.9]]) {
+    const N = 60000
+    const out = []
+    for (let i = 0; i < N; i++) {
+      const s = []
+      for (let j = 0; j < m; j++) s.push(draw(10, 0.6))
+      s.sort((a, b) => a - b)
+      out.push(s[k - 1])
+    }
+    out.sort((a, b) => a - b)
+    const observed = out[Math.floor(p * N)]
+    const theory = orderStatQuantile(10, 0.6, m, k, p)
+    const err = Math.abs(observed - theory) / observed
+    if (err > 0.05) throw new Error(`k=${k}/${m} p${p}: theory ${theory.toFixed(3)}, observed ${observed.toFixed(3)}`)
+  }
+  return true
+})
+
+check('the order statistic is monotone in k and in the quantile', () => {
+  // Waiting for more of them cannot be faster, and a higher quantile cannot be
+  // lower. Two properties that catch an inverted comparison instantly.
+  for (let k = 1; k < 5; k++) {
+    if (!(orderStatQuantile(10, 0.5, 5, k + 1, 0.9) > orderStatQuantile(10, 0.5, 5, k, 0.9))) {
+      throw new Error(`waiting for ${k + 1} of 5 is not slower than ${k}`)
+    }
+  }
+  let last = 0
+  for (const p of [0.1, 0.5, 0.9, 0.99, 0.999]) {
+    const v = orderStatQuantile(10, 0.5, 3, 2, p)
+    if (v < last) throw new Error(`quantile ${p} came out below the one before it`)
+    last = v
+  }
+  return true
+})
+
+check('waiting for k of m hedges — the tail gains more than the median', () => {
+  // The reason tied and hedged requests work, and the effect the engine could
+  // not express before. Two copies help a little at the median and a lot at
+  // p99; if that ordering ever inverted, the model would be backwards.
+  const atP50 = hedgeBenefit(0.5, 2, 0.5)
+  const atP99 = hedgeBenefit(0.5, 2, 0.99)
+  if (!(atP99 < atP50)) throw new Error(`hedging helps the median (${atP50.toFixed(2)}) more than the tail (${atP99.toFixed(2)})`)
+  if (!(atP99 < 0.8)) throw new Error('hedging two copies should cut the p99 substantially')
+  return hedgeBenefit(0.5, 1, 0.99) === 1
+})
+
+check('the consensus penalty shrinks towards the tail', () => {
+  // The signature of hedging inside a quorum write: a majority being *all* slow
+  // is far less likely than one being slow, so the relative cost of consensus
+  // falls as you go further out.
+  const q = (p) => quorumWriteLatency({ serviceMs: 2, rttMs: 4, replicas: 3, cv: 0.5, p })
+  const one = (p) => lognormalQuantile(2, 0.5, p)
+  const ratio50 = q(0.5) / one(0.5)
+  const ratio999 = q(0.999) / one(0.999)
+  if (!(ratio999 < ratio50)) throw new Error(`penalty grows towards the tail: p50 ×${ratio50.toFixed(2)}, p99.9 ×${ratio999.toFixed(2)}`)
+  return true
+})
+
+check('a bigger consensus group is slower at the median, not faster', () => {
+  // More members means more machines that must agree. If this ever inverted,
+  // the tool would advise growing a Raft group to make it quick.
+  const at = (n) => quorumWriteLatency({ serviceMs: 2, rttMs: 4, replicas: n, cv: 0.5, p: 0.5 })
+  if (!(at(5) > at(3) && at(3) > at(1))) throw new Error('a larger group came out faster at the median')
+  return true
+})
+
+check('the engine actually uses it', () => {
+  // The point of the arithmetic is the numbers the studio shows. A consensus
+  // node must simulate slower than its own service time.
+  const ir = normalizeIR({
+    nodes: [
+      irNode({ id: 'S', kind: 'client', label: 'src', capacity: { source: true, capPerReplica: Infinity } }, capacityFor),
+      irNode({ id: 'Z', kind: 'zk', label: 'coord', capacity: { replicas: 3 } }, capacityFor),
+    ],
+    edges: [irEdge({ from: 'S', to: 'Z' })],
+  })
+  const node = ir.nodes.find((n) => n.id === 'Z')
+  if (node.capacity.replication !== 'quorum') throw new Error('coordination is not marked quorum')
+  const sim = simulate(ir, 100)
+  const modelled = sim.stats.Z.latency
+  if (!(modelled > node.capacity.latencyMs.p50 * 1.5)) {
+    throw new Error(`consensus node simulated at ${modelled.toFixed(2)}ms, barely above its own ${node.capacity.latencyMs.p50}ms`)
+  }
+  return true
+})
+
+check('a single member pays no consensus cost', () => {
+  // One member is not a quorum and has nobody to replicate to. If the model
+  // charged it a round trip, every one-node coordination service would look
+  // slower than it is.
+  return quorumWriteLatency({ serviceMs: 2, rttMs: 4, replicas: 1, cv: 0.5, p: 0.5 })
+    === lognormalQuantile(2, 0.5, 0.5)
 })
 
 // ────────────────────────────────────────────────────────────────────────────

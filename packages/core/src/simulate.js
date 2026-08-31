@@ -14,6 +14,7 @@
 import { CATALOG, specOf } from './catalog.js'
 import { physicalEffects, capacitySplit, effectiveCapacity, readFractionOf } from './physics.js'
 import { availabilityOf } from './replication.js'
+import { quorumWriteLatency } from './orderstat.js'
 
 const NOFX = { capMul: 1, latMul: 1, drop: 0, noCache: false, dup: 0 }
 
@@ -83,7 +84,22 @@ export function simulate(ir, totalRps, opts = {}) {
     // M/M/1-flavoured queueing delay, clamped: past the knee the analytic model
     // stops being a model of anything and the DES should take over.
     const qFactor = util >= 1 ? 20 : 1 / Math.max(0.05, 1 - util)
-    const baseLat = cap0.latencyMs.p50 * (smp?.latMul ?? 1)
+    // A consensus write is not finished when the leader is: it has to reach a
+    // majority and come back. That round trip is what the earlier model left
+    // out when it concluded quorum does not move the median — it does, by more
+    // than the median of one replica. The hedging benefit is in there too, and
+    // shows up as the penalty shrinking towards the tail.
+    const consensus = cap0.replication === 'quorum' && replicas > 1
+    const ownLat = cap0.latencyMs.p50 * (smp?.latMul ?? 1)
+    const baseLat = consensus
+      ? quorumWriteLatency({
+        serviceMs: ownLat,
+        rttMs: cap0.replicationRttMs ?? ownLat,
+        replicas,
+        cv: cap0.latencyMs.cv,
+        p: 0.5,
+      })
+      : ownLat
     const latency = baseLat * Math.min(qFactor, 20) * f.latMul * ph.latMul
 
     const availOne = cap0.availability

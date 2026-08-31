@@ -78,25 +78,22 @@ export function availabilityOf(a, n, mode = 'stateless') {
 export const FAILOVER_SUCCESS = 0.95
 
 /**
- * The latency multiplier a quorum write pays — which, for the p50, is none.
+ * Superseded, and kept only because the mistake in it is worth not repeating.
  *
- * The intuition says a majority write must be slower than a single one: you
- * wait for the q-th fastest of n responses rather than the first. The intuition
- * is right about the tail and wrong about the median, and the arithmetic says
- * why. A majority of an odd group is ⌊n/2⌋+1 of n, and the q-th of n order
- * statistic sits near the q/(n+1) quantile — which for 2-of-3 and 3-of-5 is
- * exactly 0.5. The median of a quorum write is the median of one replica.
+ * This returned the ratio of the majority-th order statistic to the median and
+ * concluded, correctly for that quantity and wrongly for the question, that a
+ * quorum write does not move your p50. The majority-th of an odd group *is* the
+ * median — but a quorum write is not one draw from a distribution. It is the
+ * leader's own work **plus a round trip to other machines**, and that round
+ * trip is exactly what this function had no term for.
  *
- * So this returns 1 for every odd group, and it is deliberately *not* wired
- * into the simulate hot path: a multiplication that is always by one is a cost
- * with no effect and a claim with no content. It is kept, exported and checked
- * because "quorum does not move your p50" is a real and slightly surprising
- * result, and because the even-n case does move it.
+ * Modelled properly in `orderstat.js`: `quorumWriteLatency` adds the
+ * replication round trip and takes the order statistic of the *followers*,
+ * which both moves the median (a three-member write costs about 2.5× a local
+ * one at the figures components actually carry) and improves the tail, because
+ * waiting for the faster of two followers hedges against a straggler.
  *
- * Where quorum genuinely costs latency is the tail — you now need the second
- * of three to be fast, not just the fastest — and the engine models tails
- * through `physicalEffects`, not here. That is honest work left undone rather
- * than work quietly approximated.
+ * @deprecated use `quorumWriteLatency` from './orderstat.js'
  */
 export function quorumLatencyMul(n, mode = 'stateless', cv = 0.5) {
   if (mode !== 'quorum' || n <= 1) return 1

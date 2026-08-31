@@ -84,6 +84,14 @@ things worse — you have doubled the machines that must both be up.
 tail). The arithmetic is checked against a simulation of independent replica
 failures, the same way the discrete-event engine is checked against Erlang-C.
 
+**Consensus costs latency too**, and the first version of this said it did not.
+A quorum write is the leader's own work *plus a round trip to a majority*, and
+that round trip was simply missing from the model. It is there now, as the
+order statistic of the followers, which has two consequences: a three-member
+write costs about 2.5× a local one at the median, and the penalty *shrinks*
+towards the tail — waiting for the faster of two followers hedges against a
+straggler, the same effect that makes tied requests work.
+
 ## The benchmark
 
 `npm run benchmark` — 100 architectures × 10 operating conditions, all 1,000
