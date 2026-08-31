@@ -2230,13 +2230,36 @@ check('every role in the table is one the classifier can produce', () => {
 // ── the template library ────────────────────────────────────────────────────
 section('Templates: 100 architectures')
 
-check('there are exactly 100 templates', () => TEMPLATES.length === 100)
-check('ten categories, ten templates each', () => {
+check('the library covers every component in the catalog', () => {
+  // This replaced "there are exactly 100 templates", which counted rather than
+  // measured. The count was never the point; coverage is. Thirty-three kinds
+  // appeared in no template at all — you could place them on the canvas and had
+  // never seen one working in a design, including two entire categories.
+  //
+  // `custom` is excluded: it is the fallback for a resource with no catalog
+  // entry, not a component anyone chooses.
+  const used = new Set(TEMPLATES.flatMap((t) => t.kinds))
+  const missing = kinds().filter((k) => k !== 'custom' && !used.has(k))
+  if (missing.length) throw new Error(`no template uses: ${missing.join(', ')}`)
+  return TEMPLATES.length >= 100
+})
+check('every category has enough templates to be worth opening', () => {
+  // Was "ten each", which stopped being true the moment the library grew to
+  // close its coverage gaps. Even is not the property that matters; empty is.
   const counts = {}
   for (const t of TEMPLATES) counts[t.category] = (counts[t.category] || 0) + 1
-  return CATEGORIES.length === 10 && CATEGORIES.every((c) => counts[c] === 10)
+  const thin = CATEGORIES.filter((c) => (counts[c] || 0) < 5)
+  if (thin.length) throw new Error(`too few templates in: ${thin.join(', ')}`)
+  return CATEGORIES.length === 10
 })
-check('template ids are unique', () => new Set(TEMPLATES.map((t) => t.id)).size === 100)
+check('template ids are unique', () => {
+  // Caught a real collision when the library grew: a new 'log-pipeline' shadowed
+  // an existing one, and `template(id)` would have returned the wrong design.
+  const ids = TEMPLATES.map((t) => t.id)
+  const dupes = [...new Set(ids.filter((x, i) => ids.indexOf(x) !== i))]
+  if (dupes.length) throw new Error(`duplicate template id: ${dupes.join(', ')}`)
+  return true
+})
 check('every template names only catalog kinds', () =>
   TEMPLATES.every((t) => t.kinds.every((k) => !!CATALOG[k])))
 
@@ -2265,8 +2288,8 @@ check('an edge naming an undeclared component is a build error, not a dropped ed
 })
 check('search finds a template by component kind', () =>
   searchTemplates('kafka').length > 0 && searchTemplates('kafka').every((t) => /kafka/.test(JSON.stringify(t))))
-check('search finds a template by category', () => searchTemplates('Finance & regulated').length === 10)
-check('search with no query returns everything', () => searchTemplates('').length === 100)
+check('search finds a template by category', () => searchTemplates('Finance & regulated').length >= 10)
+check('search with no query returns everything', () => searchTemplates('').length === TEMPLATES.length)
 check('the library is not uniformly green — the gate has real opinions', () => {
   // A hundred templates that all pass would mean the thresholds were fitted to
   // the answer. A sample must contain more than one verdict.
@@ -3066,6 +3089,18 @@ check('a single member pays no consensus cost', () => {
   // slower than it is.
   return quorumWriteLatency({ serviceMs: 2, rttMs: 4, replicas: 1, cv: 0.5, p: 0.5 })
     === lognormalQuantile(2, 0.5, 0.5)
+})
+
+check('the two ways in are not both called "example"', () => {
+  // The header had "Load an example…" (four IaC import formats) beside a
+  // "Templates" button (the architecture library). Asked which one held the
+  // hundred templates, and the labels did not say. They do now, and the button
+  // carries the count so the library's size is visible without opening it.
+  const app = read('apps/canvas/src/App.jsx')
+  if (/Load an example/.test(app)) throw new Error('the import dropdown still calls itself an example')
+  if (!/Import example code/.test(app)) throw new Error('the import dropdown does not say it imports code')
+  if (!/Templates \(\{TEMPLATE_COUNT\}\)/.test(app)) throw new Error('the Templates button does not show how many there are')
+  return true
 })
 
 // ────────────────────────────────────────────────────────────────────────────

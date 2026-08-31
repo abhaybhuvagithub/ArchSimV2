@@ -94,7 +94,7 @@ straggler, the same effect that makes tied requests work.
 
 ## The benchmark
 
-`npm run benchmark` — 100 architectures × 10 operating conditions, all 1,000
+`npm run benchmark` — 120 architectures × 10 operating conditions, all 1,200
 actually simulated, in about two and a half seconds. Each cell isolates one
 variable: three conditions vary load, seven hold load at the design point and
 vary the fault.
@@ -125,7 +125,7 @@ holds the generator, the CSV and the reasoning.
 | [`@archsim/iac`](packages/iac) | The bidirectional compiler. Terraform plan JSON, raw HCL, Kubernetes, CloudFormation/CDK, Pulumi and Helm charts in; surgical CST patches, drift reports and pull-request payloads back out. |
 | [`@archsim/des`](packages/des) | The discrete-event engine: G/G/c with bounded queues, retry storms, circuit breakers, thread starvation, partitions — validated against Erlang-C. |
 | [`@archsim/twin`](packages/twin) | Twin Lite: browser-pull telemetry, binding resolution, ghost-node discovery, model calibration, incident time-travel. |
-| [`@archsim/templates`](packages/templates) | 100 reference architectures as IR — each sized from the catalog, with its own workload and SLOs, so the gate has an opinion the moment one opens. |
+| [`@archsim/templates`](packages/templates) | 120 reference architectures as IR — each sized from the catalog, with its own workload and SLOs, so the gate has an opinion the moment one opens. |
 | [`@archsim/cli`](packages/cli) | `archsim` — the headless engine and the CI gate. |
 | [`apps/canvas`](apps/canvas) | The studio. A consumer of the packages, not their owner. |
 

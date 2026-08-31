@@ -1,7 +1,8 @@
 # The 1,000-scenario benchmark
 
-`npm run benchmark` — 100 architectures × 10 operating conditions, every one
-actually simulated. Takes about two and a half seconds.
+`npm run benchmark` — 120 architectures × 10 operating conditions, every one
+actually simulated. Takes about two and a half seconds. (It was 100 × 10 when
+this was written; the library grew to cover components no template used.)
 
 This is the version of "a thousand" that was worth building. A thousand
 *templates* would have been 877 renames of the same queueing problem
@@ -34,16 +35,16 @@ than a kind guessed here that half the templates do not contain.
 
 | Condition | pass | risk | fail | the question |
 |---|---:|---:|---:|---|
-| Design point | 98% | 0% | 2% | Does it work at all, on a good day? |
-| At the knee, 1.54× | 5% | 3% | 92% | What happens where utilisation reaches 100%? |
+| Design point | 98% | 0% | 3% | Does it work at all, on a good day? |
+| At the knee, 1.54× | 6% | 3% | 91% | What happens where utilisation reaches 100%? |
 | Overload, 3.1× | 1% | 0% | 99% | Well past the knee, what breaks first? |
 | Zone loss | 87% | 10% | 3% | Does losing a third of every tier stay in budget? |
-| Region loss | 41% | 10% | 49% | Can the surviving half carry the whole load? |
-| Grey failure | 86% | 11% | 3% | Does one slow-but-healthy instance poison the pool? |
-| Retry storm | 95% | 3% | 2% | Do retries amplify a small failure into a large one? |
-| Cache stampede | 77% | 5% | 18% | What reaches the origin when the cache stops absorbing? |
+| Region loss | 42% | 11% | 48% | Can the surviving half carry the whole load? |
+| Grey failure | 88% | 9% | 3% | Does one slow-but-healthy instance poison the pool? |
+| Retry storm | 93% | 4% | 3% | Do retries amplify a small failure into a large one? |
+| Cache stampede | 80% | 4% | 16% | What reaches the origin when the cache stops absorbing? |
 | Network partition | 98% | 0% | 2% | Do calls fail fast, or hold a worker for the timeout? |
-| Thundering herd | 16% | 5% | 79% | Does everything reconnecting at once finish the job? |
+| Thundering herd | 18% | 4% | 78% | Does everything reconnecting at once finish the job? |
 
 Four results are worth arguing with rather than filing.
 
@@ -71,7 +72,7 @@ the whole load. The benchmark now puts a number on it.
 That is a defect in those two templates and should be fixed rather than
 explained.
 
-Across all 1,000 runs, what actually breaks: `error_rate` 219 times,
+Across all 1,200 runs, what actually breaks: `error_rate` 219 times,
 `monthly_cost_usd` 160, `p99_ms` 156, `availability` 20.
 
 ## Reading the matrix

@@ -25,7 +25,10 @@ import { useGate } from './useGate.js'
 import { CommandPalette, Shortcuts, Tour } from './Overlays.jsx'
 import Templates from './Templates.jsx'
 import About from './About.jsx'
-import { template as buildTemplateIR } from '@archsim/templates'
+import { template as buildTemplateIR, TEMPLATES as ALL_TEMPLATES } from '@archsim/templates'
+
+/** Shown on the button, so the library's size is visible without opening it. */
+const TEMPLATE_COUNT = ALL_TEMPLATES.length
 import { useToast } from './Toast.jsx'
 import { buildTour, SHORTCUTS } from './tour.js'
 import * as persist from './persist.js'
@@ -566,7 +569,7 @@ export default function App() {
             setTriView={setTriView}
           />
           <button id="guide-btn" className="menubtn" onClick={startTour} title="Replay the guided tour — G">◷ Guide/Tour</button>
-          <button id="templates-btn" onClick={() => setGallery(true)} title="Browse 100 architecture templates — L">Templates</button>
+          <button id="templates-btn" onClick={() => setGallery(true)} title={`Browse ${TEMPLATE_COUNT} architecture templates — L`}>Templates ({TEMPLATE_COUNT})</button>
           <select onChange={(e) => { if (e.target.value) { importText(
               e.target.value === 'plan' ? EXAMPLE_PLAN
                 : e.target.value === 'hcl' ? EXAMPLE_HCL
@@ -574,7 +577,7 @@ export default function App() {
                     : EXAMPLE_K8S,
               e.target.value === 'k8s' ? 'checkout.yaml' : e.target.value === 'cfn' ? 'Checkout.template.json' : 'main.tf',
             ); e.target.value = '' } }} defaultValue="">
-            <option value="">Load an example…</option>
+            <option value="">Import example code…</option>
             <option value="plan">Terraform plan JSON (exact)</option>
             <option value="hcl">Raw HCL (best-effort)</option>
             <option value="k8s">Kubernetes manifests</option>
