@@ -70,7 +70,7 @@ export default function ViewMenu({
           {item('⧉ Arrange', 'Clean left-to-right layers with fewer crossing lines', onArrange)}
           {item('⤢ Fit', 'Fit the whole diagram in view', onFit)}
           {item('①②③ Step numbers', 'Number the connections in request order', () => setStepNumbers(!stepNumbers), stepNumbers)}
-          {item('⫼ Tri-view', 'Canvas, the IR and the inspector side by side', () => setTriView(!triView), triView)}
+          {item('⫼ Tri-view', 'Advanced — shows ArchIR, the file behind the picture, beside the canvas', () => setTriView(!triView), triView)}
           {item(
             dark ? '☀️ Light mode' : '🌙 Dark mode',
             surfaced

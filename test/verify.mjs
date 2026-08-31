@@ -77,6 +77,21 @@ function stripComments(text) {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1')
 }
 
+/**
+ * Blank out string literals, keeping the quotes so the code still parses to the
+ * eye. Needed because prose inside a data file is not code: a sentence ending
+ * "…every capacity figure in one document." reads to a regex exactly like a DOM
+ * access, and the glossary is full of sentences like that. Stripping strings
+ * makes the DOM check more accurate rather than more permissive — `document.`
+ * inside a quoted sentence was never a DOM access in the first place.
+ */
+function stripStrings(text) {
+  return text
+    .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
+    .replace(/`(?:[^`\\]|\\.)*`/g, '``')
+}
+
 let passed = 0
 const failures = []
 const pending = []
@@ -1383,7 +1398,7 @@ check('no package touches the DOM', () => {
     // Comments are stripped first: prose about "an incident window." is not a
     // DOM reference, and neither is `b.window.push` — a breaker's sliding
     // window, which is why the pattern also refuses a preceding dot.
-    const text = stripComments(fs.readFileSync(f, 'utf8'))
+    const text = stripStrings(stripComments(fs.readFileSync(f, 'utf8')))
     ok(!/(^|[^.\w])(document|window)\./m.test(text), `${f} references the DOM`)
   }
 })
@@ -2875,6 +2890,69 @@ check('the stat row states success rather than making you invert it', () => {
   const src = read('apps/canvas/src/Panels.jsx')
   if (!/label="success"/.test(src)) throw new Error('no success rate')
   if (!/label="QPS"/.test(src)) throw new Error('the row does not say what load it describes')
+  return true
+})
+
+check('there is an About, and it answers the three questions that were asked', () => {
+  // Abhay asked what ArchIR is, when it appears, and why it is advanced. All
+  // three were answerable only by reading the source.
+  const src = read('apps/canvas/src/About.jsx')
+  if (!/ArchIR/.test(src)) throw new Error('About never mentions ArchIR')
+  if (!/Tri-view/.test(src)) throw new Error('About does not say where to find it')
+  if (!/advanced/i.test(src)) throw new Error('About does not say why it is marked advanced')
+  if (!/cannot/i.test(src)) throw new Error('About does not say what the tool cannot tell you')
+  const app = read('apps/canvas/src/App.jsx')
+  return /aria-label="About ArchSim"/.test(app) && /setAboutOpen\(true\)/.test(app)
+})
+
+check('a panel headed with an acronym explains itself', () => {
+  // "ARCHIR" alone over a column of JSON is what prompted the question.
+  const src = read('apps/canvas/src/IRPanel.jsx')
+  if (!/irwhat/.test(src)) throw new Error('the IR panel has no one-line explanation')
+  if (!/iradv/.test(src)) throw new Error('the IR panel is not marked advanced')
+  return true
+})
+
+check('ArchIR is in the glossary, not only in the source', () => {
+  const a = ACRONYMS.find((x) => x.short === 'ArchIR')
+  if (!a) throw new Error('ArchIR is not defined')
+  if (!a.gotcha) throw new Error('nothing explains why it is advanced')
+  return /Tri-view/.test(a.means)
+})
+
+check('no two commands quietly claim the same key', () => {
+  // The first attempt at About bound it to A, which already opens Arrange.
+  // Running this turned up a pre-existing one too: Fit was listed twice, under
+  // two groups, running the same function — one action, two ⌘K entries.
+  //
+  // A shared key is legitimate when it *toggles* between commands, which is
+  // what M does between main and this PR. That is allowed and must be
+  // documented as a toggle in SHORTCUTS, so the exception cannot be used to
+  // wave through an accident.
+  const app = read('apps/canvas/src/App.jsx')
+  const claimed = [...app.matchAll(/keys: '([^']+)'/g)].map((m) => m[1])
+  const dupes = [...new Set(claimed.filter((k, i) => claimed.indexOf(k) !== i))]
+  for (const k of dupes) {
+    const doc = SHORTCUTS.find((r) => r.keys === k)
+    if (!doc) throw new Error(`${k} is claimed twice and is not documented at all`)
+    if (!doc.what.includes('/')) throw new Error(`${k} is claimed by two commands but is not documented as a toggle`)
+  }
+  return true
+})
+
+check('a dialog never grows past the window with its controls inside', () => {
+  // Third instance of this defect: the tour card, the palette, and now the
+  // sheet, whose `overflow: hidden` clipped its own footer so Close was
+  // unreachable on a narrow screen.
+  const css = read('apps/canvas/src/styles.css')
+  const sheet = css.match(/\.sheet \{[\s\S]*?\n\}/)[0]
+  if (!/max-height/.test(sheet)) throw new Error('.sheet has no height ceiling')
+  if (!/overflow-y:\s*auto/.test(sheet)) throw new Error('.sheet clips instead of scrolling')
+  if (/overflow:\s*hidden/.test(sheet)) throw new Error('.sheet still clips')
+  // Matched by content rather than by position: there is more than one
+  // `.sheet .sheetfoot` block and a positional match found the wrong one.
+  const foot = [...css.matchAll(/\.sheet \.sheetfoot \{[^}]*\}/g)].map((m) => m[0])
+  if (!foot.some((b) => /flex-wrap:\s*wrap/.test(b))) throw new Error('the sheet footer does not wrap')
   return true
 })
 

@@ -24,6 +24,7 @@ import Verdict from './Verdict.jsx'
 import { useGate } from './useGate.js'
 import { CommandPalette, Shortcuts, Tour } from './Overlays.jsx'
 import Templates from './Templates.jsx'
+import About from './About.jsx'
 import { template as buildTemplateIR } from '@archsim/templates'
 import { useToast } from './Toast.jsx'
 import { buildTour, SHORTCUTS } from './tour.js'
@@ -97,6 +98,7 @@ export default function App() {
     try { return simulate(ir, rps).stats } catch { return null }
   }, [ir, rps])
   const [keysOpen, setKeysOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const [tourStep, setTourStep] = useState(null)
   const [restore, setRestore] = useState(null)
   const [canvasView, setCanvasView] = useState({ x: 0, y: 0, z: 1 })
@@ -456,6 +458,7 @@ export default function App() {
 
   const commands = useMemo(() => [
     { id: 'tour', group: 'Learn', title: 'Start the guided tour', keys: 'G', run: startTour },
+    { id: 'about', group: 'Learn', title: 'What is this?', desc: 'What ArchSim does, what ArchIR is, and what it cannot tell you', run: () => setAboutOpen(true) },
     { id: 'keys', group: 'Learn', title: 'Keyboard shortcuts', keys: '?', run: () => setKeysOpen(true) },
     { id: 'main', group: 'Compare', title: 'Judge main', desc: 'the base branch', keys: 'M', run: () => switchVariant('main') },
     { id: 'pr', group: 'Compare', title: 'Judge this pull request', keys: 'M', run: () => switchVariant('pr') },
@@ -467,7 +470,6 @@ export default function App() {
     { id: 'find', group: 'Canvas', title: 'Search components', keys: '/', run: () => searchRef.current?.focus() },
     { id: 'templates', group: 'Start', title: 'Browse 100 architecture templates', hint: 'L', keys: 'L', run: () => setGallery(true) },
     { id: 'view-arrange', group: 'View', title: 'Arrange the canvas now', hint: 'The best-scoring layout, applied', run: arrangeBest },
-    { id: 'view-fit', group: 'View', title: 'Fit the diagram in view', keys: 'F', run: () => canvasApi.current?.fit() },
     { id: 'view-steps', group: 'View', title: `${stepNumbers ? 'Hide' : 'Show'} step numbers`, hint: 'Number the connections in request order', run: () => setStepNumbers((v) => !v) },
     { id: 'view-sr', group: 'View', title: `${srMode ? 'Leave' : 'Enter'} screen-reader mode`, hint: 'Text equivalent of the diagram, stronger focus, no motion', run: () => setSrModeState((v) => !v) },
     ...PALETTES.map((pal) => ({ id: `palette-${pal.id}`, group: 'View', title: `Palette: ${pal.name}`, run: () => setPaletteState(pal.id) })),
@@ -591,7 +593,7 @@ export default function App() {
           <button className="iconbtn" onClick={cycleTheme} title={`Theme: ${theme}. Press T to cycle.`} aria-label={`Theme: ${theme}. Cycle theme`}>
             {theme === 'dark' ? '◐' : theme === 'light' ? '☀' : '◑'}
           </button>
-          <button className="iconbtn" onClick={startTour} title="Take the tour — G" aria-label="Start the guided tour">?</button>
+          <button className="iconbtn" onClick={() => setAboutOpen(true)} title="What is this?" aria-label="About ArchSim">?</button>
           <span className="hash" title="Content address of the IR. Two runs that print the same hash simulated the same architecture.">{irHash(ir)}</span>
         </div>
       </header>
@@ -714,6 +716,12 @@ export default function App() {
       <Templates open={gallery} onClose={() => setGallery(false)} onPick={openTemplate} />
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
       <Shortcuts open={keysOpen} onClose={() => setKeysOpen(false)} rows={SHORTCUTS} />
+      <About
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        onTour={startTour}
+        onGlossary={() => setTab('Acronyms')}
+      />
       {tourStep !== null && (
         <Tour steps={tourSteps} index={tourStep} onIndex={setTourStep} onClose={() => setTourStep(null)} />
       )}

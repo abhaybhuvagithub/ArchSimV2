@@ -34,12 +34,20 @@ export default function IRPanel({ ir, hovered, onHover, selected, onSelect }) {
 
   return (
     <section className="irpanel" aria-label="The intermediate representation">
+      {/* "ARCHIR" alone was a bare acronym at the top of a column of JSON, and
+          it prompted exactly the question you would expect: what is this, when
+          does it appear, and why is it advanced. A header that makes someone
+          ask is a defect. */}
       <header className="irhead">
-        <h4>ArchIR</h4>
+        <h4>ArchIR <span className="iradv">advanced</span></h4>
         <span className="irmeta">
           {ir.nodes.length} nodes · {ir.edges.length} edges · {doc.lines.length} lines
         </span>
       </header>
+      <p className="irwhat">
+        The file behind the picture — every component and connection, exactly as the simulator sees it.
+        Read-only; the diagram and the inspector are where it is edited.
+      </p>
 
       <div className="irbody" ref={listRef} onPointerLeave={() => onHover?.(null)}>
         {doc.lines.map((text, i) => {

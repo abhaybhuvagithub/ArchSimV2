@@ -81,6 +81,9 @@ export const ACRONYMS = [
   /* ── Architecture ─────────────────────────────────────────────────────── */
   { short: 'IR', long: 'intermediate representation', group: 'Architecture',
     means: "ArchSim's single source of truth: one document describing the architecture, which both the diagram and the code are projections of." },
+  { short: 'ArchIR', long: 'Architecture Intermediate Representation', group: 'Architecture',
+    means: 'The file behind the picture — every component, connection and capacity figure in one document. View → Tri-view shows it beside the canvas.',
+    gotcha: 'It is marked advanced because it is read-only and several hundred lines of JSON, and because nothing in it is needed to use the studio: everything it holds is editable through the diagram in words. It is for when you want to know exactly what the tool thinks your system is.' },
   { short: 'ULID', long: 'universally unique lexicographically sortable identifier', group: 'Architecture',
     means: 'The identity every node and edge carries. Sortable by creation time, unlike a UUID.',
     gotcha: 'Never derived from a label. Renaming a component must not change what it is, or every diff would report a delete and an add.' },
